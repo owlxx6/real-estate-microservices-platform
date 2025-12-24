@@ -95,6 +95,16 @@ api.interceptors.response.use(
 
 export const authAPI = {
   login: (credentials) => api.post('/api/auth/login', credentials),
+  register: (registerData) => api.post('/api/users/register', registerData),
+};
+
+export const userAPI = {
+  getAll: () => api.get('/api/users'),
+  getById: (id) => api.get(`/api/users/${id}`),
+  getByUsername: (username) => api.get(`/api/users/username/${username}`),
+  create: (user) => api.post('/api/users', user),
+  update: (id, user) => api.put(`/api/users/${id}`, user),
+  delete: (id) => api.delete(`/api/users/${id}`),
 };
 
 export const propertyAPI = {

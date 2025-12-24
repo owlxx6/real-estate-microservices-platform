@@ -1,17 +1,48 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Typography, Button, Container, Grid, Card, CardContent, Paper, Chip } from '@mui/material';
+import { 
+  Box, 
+  Typography, 
+  Button, 
+  Container, 
+  Grid, 
+  Card, 
+  CardContent, 
+  Paper, 
+  Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Alert,
+  CircularProgress
+} from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import HomeIcon from '@mui/icons-material/Home';
 import SearchIcon from '@mui/icons-material/Search';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import SecurityIcon from '@mui/icons-material/Security';
-import { propertyAPI } from '../services/api';
-import { isAuthenticated } from '../utils/auth';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import { propertyAPI, authAPI } from '../services/api';
+import { isAuthenticated, setAuthData } from '../utils/auth';
 
 function Home() {
   const navigate = useNavigate();
   const authenticated = isAuthenticated();
   const [featuredProperties, setFeaturedProperties] = useState([]);
+  const [openRegisterDialog, setOpenRegisterDialog] = useState(false);
+  const [registerForm, setRegisterForm] = useState({
+    username: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    firstName: '',
+    lastName: '',
+    phone: ''
+  });
+  const [registerError, setRegisterError] = useState('');
+  const [registerSuccess, setRegisterSuccess] = useState('');
+  const [registering, setRegistering] = useState(false);
 
   useEffect(() => {
     if (authenticated) {
@@ -25,6 +56,69 @@ function Home() {
       setFeaturedProperties((response.data.content || []).slice(0, 3));
     } catch (err) {
       console.error('Error loading featured properties:', err);
+    }
+  };
+
+  const handleRegister = async () => {
+    setRegisterError('');
+    setRegisterSuccess('');
+
+    // Validation
+    if (!registerForm.username || !registerForm.email || !registerForm.password || 
+        !registerForm.firstName || !registerForm.lastName) {
+      setRegisterError('Please fill in all required fields.');
+      return;
+    }
+
+    if (registerForm.password.length < 6) {
+      setRegisterError('Password must be at least 6 characters.');
+      return;
+    }
+
+    if (registerForm.password !== registerForm.confirmPassword) {
+      setRegisterError('Passwords do not match.');
+      return;
+    }
+
+    setRegistering(true);
+
+    try {
+      const registerData = {
+        username: registerForm.username,
+        email: registerForm.email,
+        password: registerForm.password,
+        firstName: registerForm.firstName,
+        lastName: registerForm.lastName,
+        phone: registerForm.phone || null
+      };
+
+      const response = await authAPI.register(registerData);
+      
+      setRegisterSuccess('Account created successfully! Please log in.');
+      setRegisterForm({
+        username: '',
+        email: '',
+        password: '',
+        confirmPassword: '',
+        firstName: '',
+        lastName: '',
+        phone: ''
+      });
+      
+      // Fermer le dialog après 2 secondes et rediriger vers login
+      setTimeout(() => {
+        setOpenRegisterDialog(false);
+        navigate('/login');
+      }, 2000);
+    } catch (err) {
+      console.error('Registration error:', err);
+      setRegisterError(
+        err.response?.data?.message || 
+        err.response?.data?.error || 
+        'Registration failed. Username or email may already be in use.'
+      );
+    } finally {
+      setRegistering(false);
     }
   };
 
@@ -81,6 +175,15 @@ function Home() {
                 sx={{ mr: 2, bgcolor: 'white', color: 'primary.main', '&:hover': { bgcolor: '#f5f5f5' } }}
               >
                 Login
+              </Button>
+              <Button
+                variant="contained"
+                size="large"
+                onClick={() => setOpenRegisterDialog(true)}
+                startIcon={<PersonAddIcon />}
+                sx={{ mr: 2, bgcolor: 'rgba(255,255,255,0.9)', color: 'primary.main', '&:hover': { bgcolor: 'white' } }}
+              >
+                Sign Up
               </Button>
               <Button
                 variant="outlined"
@@ -203,6 +306,130 @@ function Home() {
           </>
         )}
       </Container>
+
+      {/* Register Dialog */}
+      <Dialog 
+        open={openRegisterDialog} 
+        onClose={() => !registering && setOpenRegisterDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Create Your Account</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Sign up to browse properties, contact agents, and book visits
+          </Typography>
+
+          {registerError && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setRegisterError('')}>
+              {registerError}
+            </Alert>
+          )}
+
+          {registerSuccess && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              {registerSuccess}
+            </Alert>
+          )}
+
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
+            <TextField
+              fullWidth
+              label="Username"
+              value={registerForm.username}
+              onChange={(e) => setRegisterForm({ ...registerForm, username: e.target.value })}
+              required
+              disabled={registering}
+              helperText="Minimum 3 characters"
+            />
+            <TextField
+              fullWidth
+              label="Email"
+              type="email"
+              value={registerForm.email}
+              onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })}
+              required
+              disabled={registering}
+            />
+            <Grid container spacing={2}>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="First Name"
+                  value={registerForm.firstName}
+                  onChange={(e) => setRegisterForm({ ...registerForm, firstName: e.target.value })}
+                  required
+                  disabled={registering}
+                />
+              </Grid>
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  label="Last Name"
+                  value={registerForm.lastName}
+                  onChange={(e) => setRegisterForm({ ...registerForm, lastName: e.target.value })}
+                  required
+                  disabled={registering}
+                />
+              </Grid>
+            </Grid>
+            <TextField
+              fullWidth
+              label="Phone (Optional)"
+              value={registerForm.phone}
+              onChange={(e) => setRegisterForm({ ...registerForm, phone: e.target.value })}
+              disabled={registering}
+            />
+            <TextField
+              fullWidth
+              label="Password"
+              type="password"
+              value={registerForm.password}
+              onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
+              required
+              disabled={registering}
+              helperText="Minimum 6 characters"
+            />
+            <TextField
+              fullWidth
+              label="Confirm Password"
+              type="password"
+              value={registerForm.confirmPassword}
+              onChange={(e) => setRegisterForm({ ...registerForm, confirmPassword: e.target.value })}
+              required
+              disabled={registering}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              setOpenRegisterDialog(false);
+              setRegisterError('');
+              setRegisterSuccess('');
+              setRegisterForm({
+                username: '',
+                email: '',
+                password: '',
+                confirmPassword: '',
+                firstName: '',
+                lastName: '',
+                phone: ''
+              });
+            }} 
+            disabled={registering}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleRegister} 
+            variant="contained"
+            disabled={registering}
+          >
+            {registering ? <CircularProgress size={24} /> : 'Sign Up'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

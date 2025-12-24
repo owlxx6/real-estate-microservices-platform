@@ -1,9 +1,12 @@
 package com.realestate.client.controller;
 
 import com.realestate.client.dto.AuthRequest;
+import com.realestate.client.dto.RegisterRequestDTO;
 import com.realestate.client.dto.UserDTO;
 import com.realestate.client.model.User;
+import com.realestate.client.service.ClientService;
 import com.realestate.client.service.UserService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +21,7 @@ import java.util.stream.Collectors;
 public class UserController {
     
     private final UserService userService;
+    private final ClientService clientService;
     
     @GetMapping("/username/{username}")
     public ResponseEntity<UserDTO> getUserByUsername(@PathVariable String username) {
@@ -69,6 +73,34 @@ public class UserController {
                     .body(userService.createUser(user));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequestDTO registerRequest) {
+        try {
+            User user = userService.registerClient(registerRequest, clientService);
+            UserDTO userDTO = convertToDTO(user);
+            return ResponseEntity.status(HttpStatus.CREATED).body(userDTO);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                    .body(new ErrorResponse(e.getMessage()));
+        }
+    }
+    
+    private static class ErrorResponse {
+        private String message;
+        
+        public ErrorResponse(String message) {
+            this.message = message;
+        }
+        
+        public String getMessage() {
+            return message;
+        }
+        
+        public void setMessage(String message) {
+            this.message = message;
         }
     }
     

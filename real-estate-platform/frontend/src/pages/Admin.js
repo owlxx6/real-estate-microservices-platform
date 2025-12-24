@@ -29,7 +29,7 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ContactsIcon from '@mui/icons-material/Contacts';
-import { propertyAPI } from '../services/api';
+import { propertyAPI, userAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 
 function TabPanel({ children, value, index }) {
@@ -45,8 +45,11 @@ function Admin() {
   const { isAdmin: userIsAdmin, isLoading: authLoading } = useAuth();
   const [tabValue, setTabValue] = useState(0);
   const [properties, setProperties] = useState([]);
+  const [users, setUsers] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
+  const [openUserDialog, setOpenUserDialog] = useState(false);
   const [currentProperty, setCurrentProperty] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -61,6 +64,15 @@ function Admin() {
     status: 'AVAILABLE',
     agentId: '1'
   });
+  const [userFormData, setUserFormData] = useState({
+    username: '',
+    email: '',
+    password: '',
+    role: 'CLIENT',
+    isActive: true,
+    agentId: null,
+    clientId: null
+  });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
@@ -73,11 +85,22 @@ function Admin() {
     }
   }, []);
 
+  const loadUsers = useCallback(async () => {
+    try {
+      const response = await userAPI.getAll();
+      setUsers(response.data || []);
+    } catch (err) {
+      console.error('Error loading users:', err);
+      setMessage({ type: 'error', text: 'Failed to load users.' });
+    }
+  }, []);
+
   useEffect(() => {
     if (userIsAdmin) {
       loadProperties();
+      loadUsers();
     }
-  }, [userIsAdmin, loadProperties]);
+  }, [userIsAdmin, loadProperties, loadUsers]);
 
   // Check if user is admin - after hooks
   if (authLoading) {
@@ -206,6 +229,125 @@ function Admin() {
     }
   };
 
+  const handleOpenUserDialog = (user = null) => {
+    if (user) {
+      setCurrentUser(user);
+      setUserFormData({
+        username: user.username,
+        email: user.email,
+        password: '',
+        role: user.role,
+        isActive: user.isActive,
+        agentId: user.agentId || null,
+        clientId: user.clientId || null
+      });
+    } else {
+      setCurrentUser(null);
+      setUserFormData({
+        username: '',
+        email: '',
+        password: '',
+        role: 'CLIENT',
+        isActive: true,
+        agentId: null,
+        clientId: null
+      });
+    }
+    setOpenUserDialog(true);
+  };
+
+  const handleCloseUserDialog = () => {
+    setOpenUserDialog(false);
+    setCurrentUser(null);
+    setUserFormData({
+      username: '',
+      email: '',
+      password: '',
+      role: 'CLIENT',
+      isActive: true,
+      agentId: null,
+      clientId: null
+    });
+  };
+
+  const handleUserFormChange = (field, value) => {
+    setUserFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSaveUser = async () => {
+    setLoading(true);
+    setMessage({ type: '', text: '' });
+
+    try {
+      const userData = {
+        username: userFormData.username,
+        email: userFormData.email,
+        role: userFormData.role,
+        isActive: userFormData.isActive,
+        agentId: userFormData.agentId || null,
+        clientId: userFormData.clientId || null
+      };
+
+      // Ajouter le mot de passe seulement si fourni (pour la création ou la mise à jour)
+      if (userFormData.password && userFormData.password.trim() !== '') {
+        userData.password = userFormData.password;
+      }
+
+      if (currentUser) {
+        // Update existing user
+        await userAPI.update(currentUser.id, userData);
+        setMessage({ type: 'success', text: 'User updated successfully.' });
+      } else {
+        // Create new user
+        if (!userData.password || userData.password.trim() === '') {
+          setMessage({ type: 'error', text: 'Password is required for new users.' });
+          setLoading(false);
+          return;
+        }
+        await userAPI.create(userData);
+        setMessage({ type: 'success', text: 'User created successfully.' });
+      }
+
+      handleCloseUserDialog();
+      loadUsers();
+      setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+    } catch (err) {
+      console.error('Error saving user:', err);
+      setMessage({ 
+        type: 'error', 
+        text: err.response?.data?.message || 'Failed to save user. Username or email may already exist.' 
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (id) => {
+    const user = users.find(u => u.id === id);
+    if (user && user.role === 'ADMIN') {
+      setMessage({ type: 'error', text: 'Cannot delete admin users.' });
+      return;
+    }
+
+    if (window.confirm('Are you sure you want to delete this user? This will deactivate the user account.')) {
+      setLoading(true);
+      try {
+        await userAPI.delete(id);
+        setMessage({ type: 'success', text: 'User deleted successfully.' });
+        loadUsers();
+        setTimeout(() => setMessage({ type: '', text: '' }), 3000);
+      } catch (err) {
+        console.error('Error deleting user:', err);
+        setMessage({ type: 'error', text: 'Failed to delete user.' });
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
@@ -230,6 +372,7 @@ function Admin() {
       <Paper>
         <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
           <Tab label="Properties Management" />
+          <Tab label="User Management" />
           <Tab label="Statistics" />
         </Tabs>
 
@@ -298,6 +441,108 @@ function Admin() {
         </TabPanel>
 
         <TabPanel value={tabValue} index={1}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Typography variant="h6">Users Management</Typography>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => {
+                setCurrentUser(null);
+                setUserFormData({
+                  username: '',
+                  email: '',
+                  password: '',
+                  role: 'CLIENT',
+                  isActive: true,
+                  agentId: null,
+                  clientId: null
+                });
+                setOpenUserDialog(true);
+              }}
+            >
+              Add User
+            </Button>
+          </Box>
+
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell><strong>ID</strong></TableCell>
+                  <TableCell><strong>Username</strong></TableCell>
+                  <TableCell><strong>Email</strong></TableCell>
+                  <TableCell><strong>Role</strong></TableCell>
+                  <TableCell><strong>Status</strong></TableCell>
+                  <TableCell><strong>Agent ID</strong></TableCell>
+                  <TableCell><strong>Client ID</strong></TableCell>
+                  <TableCell align="right"><strong>Actions</strong></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {users.map((user) => (
+                  <TableRow key={user.id} hover>
+                    <TableCell>#{user.id}</TableCell>
+                    <TableCell>{user.username}</TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>
+                      <Chip 
+                        label={user.role} 
+                        size="small" 
+                        color={
+                          user.role === 'ADMIN' ? 'error' : 
+                          user.role === 'AGENT' ? 'primary' : 
+                          'default'
+                        }
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip 
+                        label={user.isActive ? 'Active' : 'Inactive'} 
+                        size="small" 
+                        color={user.isActive ? 'success' : 'default'}
+                      />
+                    </TableCell>
+                    <TableCell>{user.agentId || 'N/A'}</TableCell>
+                    <TableCell>{user.clientId || 'N/A'}</TableCell>
+                    <TableCell align="right">
+                      <IconButton 
+                        size="small" 
+                        color="primary"
+                        onClick={() => {
+                          setCurrentUser(user);
+                          setUserFormData({
+                            username: user.username,
+                            email: user.email,
+                            password: '',
+                            role: user.role,
+                            isActive: user.isActive,
+                            agentId: user.agentId || null,
+                            clientId: user.clientId || null
+                          });
+                          setOpenUserDialog(true);
+                        }}
+                        title="Edit User"
+                      >
+                        <EditIcon />
+                      </IconButton>
+                      <IconButton 
+                        size="small" 
+                        color="error"
+                        onClick={() => handleDeleteUser(user.id)}
+                        title="Delete User"
+                        disabled={user.role === 'ADMIN'}
+                      >
+                        <DeleteIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={2}>
           <Grid container spacing={3} sx={{ p: 3 }}>
             <Grid item xs={12} sm={4}>
               <Paper sx={{ p: 3, textAlign: 'center', bgcolor: '#f5f5f5' }}>
@@ -480,6 +725,109 @@ function Admin() {
             disabled={loading}
           >
             {loading ? 'Saving...' : (currentProperty ? 'Update' : 'Create')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* User Management Dialog */}
+      <Dialog open={openUserDialog} onClose={handleCloseUserDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {currentUser ? 'Edit User' : 'Add New User'}
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Username"
+                value={userFormData.username}
+                onChange={(e) => handleUserFormChange('username', e.target.value)}
+                required
+                disabled={!!currentUser}
+                helperText={currentUser ? "Username cannot be changed" : "Minimum 3 characters"}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Email"
+                type="email"
+                value={userFormData.email}
+                onChange={(e) => handleUserFormChange('email', e.target.value)}
+                required
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Password"
+                type="password"
+                value={userFormData.password}
+                onChange={(e) => handleUserFormChange('password', e.target.value)}
+                required={!currentUser}
+                helperText={currentUser ? "Leave empty to keep current password" : "Minimum 6 characters"}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                select
+                label="Role"
+                value={userFormData.role}
+                onChange={(e) => handleUserFormChange('role', e.target.value)}
+                required
+                SelectProps={{ native: true }}
+              >
+                <option value="CLIENT">CLIENT</option>
+                <option value="AGENT">AGENT</option>
+                <option value="ADMIN">ADMIN</option>
+              </TextField>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                select
+                label="Status"
+                value={userFormData.isActive ? 'true' : 'false'}
+                onChange={(e) => handleUserFormChange('isActive', e.target.value === 'true')}
+                SelectProps={{ native: true }}
+              >
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+              </TextField>
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Agent ID (Optional)"
+                type="number"
+                value={userFormData.agentId || ''}
+                onChange={(e) => handleUserFormChange('agentId', e.target.value ? parseInt(e.target.value) : null)}
+                helperText="For AGENT role only"
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Client ID (Optional)"
+                type="number"
+                value={userFormData.clientId || ''}
+                onChange={(e) => handleUserFormChange('clientId', e.target.value ? parseInt(e.target.value) : null)}
+                helperText="For CLIENT role only"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseUserDialog} disabled={loading}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSaveUser} 
+            variant="contained"
+            disabled={loading || !userFormData.username || !userFormData.email || (!currentUser && !userFormData.password)}
+          >
+            {loading ? <CircularProgress size={24} /> : (currentUser ? 'Update' : 'Create')}
           </Button>
         </DialogActions>
       </Dialog>

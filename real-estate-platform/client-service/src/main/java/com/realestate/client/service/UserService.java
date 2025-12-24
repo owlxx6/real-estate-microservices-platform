@@ -40,6 +40,42 @@ public class UserService {
     }
     
     @Transactional
+    public User registerClient(com.realestate.client.dto.RegisterRequestDTO registerRequest, ClientService clientService) {
+        // Vérifier si le username existe déjà
+        if (userRepository.existsByUsername(registerRequest.getUsername())) {
+            throw new RuntimeException("Username already exists");
+        }
+        
+        // Vérifier si l'email existe déjà
+        if (userRepository.existsByEmail(registerRequest.getEmail())) {
+            throw new RuntimeException("Email already exists");
+        }
+        
+        // Créer le Client d'abord
+        com.realestate.client.model.Client client = new com.realestate.client.model.Client();
+        client.setFirstName(registerRequest.getFirstName());
+        client.setLastName(registerRequest.getLastName());
+        client.setEmail(registerRequest.getEmail());
+        client.setPhone(registerRequest.getPhone() != null && !registerRequest.getPhone().isEmpty() 
+            ? registerRequest.getPhone() 
+            : "0000000000");
+        client.setType(com.realestate.client.model.Client.ClientType.BUYER);
+        
+        com.realestate.client.model.Client savedClient = clientService.createClient(client);
+        
+        // Créer l'utilisateur avec le rôle CLIENT
+        User user = new User();
+        user.setUsername(registerRequest.getUsername());
+        user.setEmail(registerRequest.getEmail());
+        user.setPassword(passwordEncoder.encode(registerRequest.getPassword()));
+        user.setRole(User.Role.CLIENT);
+        user.setClientId(savedClient.getId());
+        user.setIsActive(true);
+        
+        return userRepository.save(user);
+    }
+    
+    @Transactional
     public User updateUser(Long id, User userDetails) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found"));

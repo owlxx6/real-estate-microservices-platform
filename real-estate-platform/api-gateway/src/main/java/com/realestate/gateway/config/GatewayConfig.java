@@ -50,6 +50,12 @@ public class GatewayConfig {
                         .filters(f -> f.filter(jwtFilter.apply(new JwtAuthenticationFilter.Config())))
                         .uri("lb://client-service"))
                 
+                // Registration endpoint (no JWT required)
+                .route("client-service-register", r -> r
+                        .path("/api/users/register")
+                        .uri("lb://client-service"))
+                
+                // Other user endpoints (JWT required)
                 .route("client-service-users", r -> r
                         .path("/api/users/**")
                         .filters(f -> f.filter(jwtFilter.apply(new JwtAuthenticationFilter.Config())))
