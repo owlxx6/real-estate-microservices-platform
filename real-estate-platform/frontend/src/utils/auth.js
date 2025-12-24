@@ -64,3 +64,34 @@ export const hasRole = (requiredRole) => {
   return getRole() === requiredRole;
 };
 
+/**
+ * Decode JWT token and extract email
+ * @returns {string|null} The email from the token, or null if not found
+ */
+export const getEmailFromToken = () => {
+  try {
+    const token = getToken();
+    if (!token) {
+      return null;
+    }
+    
+    // JWT token has 3 parts: header.payload.signature
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return null;
+    }
+    
+    // Decode the payload (second part)
+    const payload = parts[1];
+    // Add padding if needed (base64url may not have padding)
+    const paddedPayload = payload + '='.repeat((4 - payload.length % 4) % 4);
+    const decodedPayload = JSON.parse(atob(paddedPayload.replace(/-/g, '+').replace(/_/g, '/')));
+    
+    // Extract email from the decoded payload
+    return decodedPayload.email || decodedPayload.sub || null;
+  } catch (error) {
+    console.error('Error decoding JWT token:', error);
+    return null;
+  }
+};
+

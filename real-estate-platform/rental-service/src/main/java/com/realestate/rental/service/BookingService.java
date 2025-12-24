@@ -5,6 +5,7 @@ import com.realestate.rental.dto.BookingRequestDTO;
 import com.realestate.rental.exception.InvalidBookingException;
 import com.realestate.rental.exception.PropertyNotAvailableException;
 import com.realestate.rental.exception.ResourceNotFoundException;
+import com.realestate.rental.feign.PropertyServiceClient;
 import com.realestate.rental.model.Booking;
 import com.realestate.rental.model.Booking.BookingStatus;
 import com.realestate.rental.model.RentalProperty;
@@ -19,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,15 +30,80 @@ public class BookingService {
     
     private final BookingRepository bookingRepository;
     private final RentalPropertyRepository rentalPropertyRepository;
+    private final PropertyServiceClient propertyServiceClient;
     
     @Transactional
     public BookingDTO createBooking(BookingRequestDTO request) {
-        log.info("Creating booking for rental property ID: {}", request.getRentalPropertyId());
+        // Validate that either rentalPropertyId or propertyId is provided
+        if (request.getRentalPropertyId() == null && request.getPropertyId() == null) {
+            throw new InvalidBookingException("Either rentalPropertyId or propertyId must be provided");
+        }
         
-        // 1. Vérifier que le bien louable existe et est actif
-        RentalProperty rentalProperty = rentalPropertyRepository.findById(request.getRentalPropertyId())
-            .orElseThrow(() -> new ResourceNotFoundException(
-                "Rental property not found with ID: " + request.getRentalPropertyId()));
+        RentalProperty rentalProperty;
+        
+        // 1. Get or create RentalProperty
+        if (request.getRentalPropertyId() != null) {
+            // Use existing RentalProperty
+            log.info("Creating booking for rental property ID: {}", request.getRentalPropertyId());
+            rentalProperty = rentalPropertyRepository.findById(request.getRentalPropertyId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                    "Rental property not found with ID: " + request.getRentalPropertyId()));
+        } else {
+            // Create RentalProperty automatically from propertyId
+            log.info("Creating booking for property ID: {}, RentalProperty will be created automatically", request.getPropertyId());
+            
+            // Check if RentalProperty already exists for this property
+            rentalProperty = rentalPropertyRepository.findByPropertyId(request.getPropertyId())
+                .orElse(null);
+            
+            if (rentalProperty == null) {
+                // Get property details to create RentalProperty
+                Map<String, Object> property = propertyServiceClient.getPropertyById(request.getPropertyId());
+                if (property == null) {
+                    throw new ResourceNotFoundException("Property not found with ID: " + request.getPropertyId());
+                }
+                
+                // Verify transaction type is RENTAL
+                String transactionType = (String) property.get("transactionType");
+                if (transactionType == null || !transactionType.equals("RENTAL")) {
+                    throw new InvalidBookingException("Property is not available for rental (transactionType: " + transactionType + ")");
+                }
+                
+                // Create RentalProperty with default values
+                rentalProperty = new RentalProperty();
+                rentalProperty.setPropertyId(request.getPropertyId());
+                
+                // Calculate price per night from monthly rent or price
+                BigDecimal monthlyRent = property.get("monthlyRent") != null 
+                    ? new BigDecimal(property.get("monthlyRent").toString())
+                    : null;
+                BigDecimal price = property.get("price") != null 
+                    ? new BigDecimal(property.get("price").toString())
+                    : null;
+                
+                if (monthlyRent != null && monthlyRent.compareTo(BigDecimal.ZERO) > 0) {
+                    rentalProperty.setPricePerNight(monthlyRent.divide(BigDecimal.valueOf(30), 2, java.math.RoundingMode.HALF_UP));
+                } else if (price != null && price.compareTo(BigDecimal.ZERO) > 0) {
+                    rentalProperty.setPricePerNight(price.divide(BigDecimal.valueOf(30), 2, java.math.RoundingMode.HALF_UP));
+                } else {
+                    throw new InvalidBookingException("Property price or monthly rent is required");
+                }
+                
+                // Set max guests based on rooms (default: rooms * 2)
+                Integer rooms = property.get("rooms") != null ? (Integer) property.get("rooms") : 1;
+                rentalProperty.setMaxGuests(rooms * 2);
+                
+                // Set default values
+                rentalProperty.setCleaningFee(BigDecimal.ZERO);
+                rentalProperty.setCheckInTime("15:00");
+                rentalProperty.setCheckOutTime("11:00");
+                rentalProperty.setIsActive(true);
+                
+                rentalProperty = rentalPropertyRepository.save(rentalProperty);
+                log.info("RentalProperty created automatically with ID: {} for property ID: {}", 
+                    rentalProperty.getId(), request.getPropertyId());
+            }
+        }
         
         if (!rentalProperty.getIsActive()) {
             throw new PropertyNotAvailableException("This property is not available for rental");
@@ -54,7 +121,7 @@ public class BookingService {
         
         // 4. Vérifier la disponibilité
         boolean isAvailable = checkAvailability(
-            request.getRentalPropertyId(),
+            rentalProperty.getId(),
             request.getStartDate(),
             request.getEndDate());
         
@@ -71,7 +138,7 @@ public class BookingService {
         
         // 6. Créer la réservation
         Booking booking = new Booking();
-        booking.setRentalPropertyId(request.getRentalPropertyId());
+        booking.setRentalPropertyId(rentalProperty.getId());
         booking.setStartDate(request.getStartDate());
         booking.setEndDate(request.getEndDate());
         booking.setNumberOfGuests(request.getNumberOfGuests());
@@ -203,6 +270,48 @@ public class BookingService {
     
     public boolean checkAvailability(Long rentalPropertyId, LocalDate startDate, LocalDate endDate) {
         return !bookingRepository.existsOverlappingBooking(rentalPropertyId, startDate, endDate);
+    }
+    
+    /**
+     * Get all booked dates for a property by propertyId
+     * Returns a list of date strings in format "YYYY-MM-DD"
+     */
+    public List<String> getBookedDatesByPropertyId(Long propertyId) {
+        log.info("Getting booked dates for property ID: {}", propertyId);
+        
+        // Find RentalProperty by propertyId
+        RentalProperty rentalProperty = rentalPropertyRepository.findByPropertyId(propertyId)
+            .orElse(null);
+        
+        // If no RentalProperty exists, return empty list
+        if (rentalProperty == null) {
+            log.info("No RentalProperty found for property ID: {}, returning empty booked dates", propertyId);
+            return List.of();
+        }
+        
+        // Get all bookings (CONFIRMED and PENDING) for this rental property
+        List<Booking> bookings = bookingRepository.findByRentalPropertyId(rentalProperty.getId());
+        
+        // Generate list of all booked dates
+        List<String> bookedDates = bookings.stream()
+            .filter(booking -> booking.getStatus() == BookingStatus.CONFIRMED || 
+                             booking.getStatus() == BookingStatus.PENDING)
+            .flatMap(booking -> {
+                LocalDate current = booking.getStartDate();
+                LocalDate endDate = booking.getEndDate();
+                List<String> dates = new java.util.ArrayList<>();
+                while (!current.isAfter(endDate)) {
+                    dates.add(current.toString());
+                    current = current.plusDays(1);
+                }
+                return dates.stream();
+            })
+            .distinct()
+            .sorted()
+            .collect(Collectors.toList());
+        
+        log.info("Found {} booked dates for property ID: {}", bookedDates.size(), propertyId);
+        return bookedDates;
     }
     
     // Méthodes privées de validation et calcul

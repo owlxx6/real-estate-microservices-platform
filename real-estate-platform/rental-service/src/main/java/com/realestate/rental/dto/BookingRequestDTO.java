@@ -12,8 +12,11 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class BookingRequestDTO {
     
-    @NotNull(message = "Rental property ID is required")
+    // Either rentalPropertyId or propertyId must be provided
     private Long rentalPropertyId;
+    
+    // If propertyId is provided and rentalPropertyId is null, RentalProperty will be created automatically
+    private Long propertyId;
     
     @NotNull(message = "Start date is required")
     @FutureOrPresent(message = "Start date must be today or in the future")
@@ -34,8 +37,8 @@ public class BookingRequestDTO {
     @Email(message = "Invalid email format")
     private String guestEmail;
     
-    @Pattern(regexp = "^\\+?[0-9]{10,20}$", message = "Invalid phone number format")
-    private String guestPhone;
+    @Pattern(regexp = "^$|^\\+?[0-9]{6,20}$", message = "Invalid phone number format (6-20 digits)")
+    private String guestPhone; // Optional, but if provided must match pattern (6-20 digits)
     
     private String specialRequests;
 }

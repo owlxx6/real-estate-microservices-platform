@@ -11,11 +11,14 @@ import Admin from './pages/Admin';
 import RentalSearch from './pages/RentalSearch';
 import RentalDetails from './pages/RentalDetails';
 import MyBookings from './pages/MyBookings';
+import MyInquiries from './pages/MyInquiries';
 import AdminRentals from './pages/AdminRentals';
 import AdminBookings from './pages/AdminBookings';
 import PropertiesForSale from './pages/PropertiesForSale';
 import SalePropertyDetails from './pages/SalePropertyDetails';
 import AdminSales from './pages/AdminSales';
+import PropertyContacts from './pages/PropertyContacts';
+import MyContactsAndVisits from './pages/MyContactsAndVisits';
 import { useAuth } from './hooks/useAuth';
 import RoleBasedRoute from './components/RoleBasedRoute';
 
@@ -112,6 +115,14 @@ function App() {
               }
             />
             <Route
+              path="/my-inquiries"
+              element={
+                <RoleBasedRoute requiredRole="CLIENT">
+                  <MyInquiries />
+                </RoleBasedRoute>
+              }
+            />
+            <Route
               path="/admin/rentals"
               element={
                 <RoleBasedRoute requireAgentOrAdmin>
@@ -148,6 +159,22 @@ function App() {
               element={
                 <RoleBasedRoute requireAgentOrAdmin>
                   <AdminSales />
+                </RoleBasedRoute>
+              }
+            />
+            <Route
+              path="/properties/:propertyId/contacts"
+              element={
+                <RoleBasedRoute requireAgentOrAdmin>
+                  <PropertyContacts />
+                </RoleBasedRoute>
+              }
+            />
+            <Route
+              path="/my-contacts-visits"
+              element={
+                <RoleBasedRoute requireAgentOrAdmin>
+                  <MyContactsAndVisits />
                 </RoleBasedRoute>
               }
             />

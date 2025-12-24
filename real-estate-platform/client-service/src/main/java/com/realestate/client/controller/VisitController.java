@@ -1,9 +1,12 @@
 package com.realestate.client.controller;
 
+import com.realestate.client.dto.VisitRequestDTO;
 import com.realestate.client.model.Visit;
 import com.realestate.client.service.VisitService;
+import com.realestate.client.util.RequestHeaderUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -20,6 +23,7 @@ import java.util.List;
 @Tag(name = "Visits", description = "Visit management APIs")
 public class VisitController {
     private final VisitService visitService;
+    private final RequestHeaderUtil requestHeaderUtil;
     
     @GetMapping
     @Operation(summary = "Get all visits")
@@ -37,7 +41,22 @@ public class VisitController {
     
     @PostMapping
     @Operation(summary = "Create a new visit")
-    public ResponseEntity<Visit> createVisit(@Valid @RequestBody Visit visit) {
+    public ResponseEntity<Visit> createVisit(
+            @Valid @RequestBody VisitRequestDTO visitDTO,
+            HttpServletRequest request) {
+        // Get user email from JWT token header
+        String userEmail = requestHeaderUtil.getEmailFromRequest(request);
+        if (userEmail == null || userEmail.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+        
+        Visit visit = visitService.createVisitFromDTO(visitDTO, userEmail);
+        return ResponseEntity.status(HttpStatus.CREATED).body(visit);
+    }
+    
+    @PostMapping("/direct")
+    @Operation(summary = "Create a visit directly (for admin/agent use)")
+    public ResponseEntity<Visit> createVisitDirect(@Valid @RequestBody Visit visit) {
         return ResponseEntity.status(HttpStatus.CREATED).body(visitService.createVisit(visit));
     }
     

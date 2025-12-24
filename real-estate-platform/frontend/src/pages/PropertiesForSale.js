@@ -22,7 +22,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import HomeIcon from '@mui/icons-material/Home';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useNavigate } from 'react-router-dom';
-import { saleAPI } from '../services/saleAPI';
+import { propertyAPI } from '../services/api';
 
 function PropertiesForSale() {
   const navigate = useNavigate();
@@ -46,8 +46,10 @@ function PropertiesForSale() {
     setLoading(true);
     setError('');
     try {
-      const response = await saleAPI.getAllForSale();
-      setProperties(response.data || []);
+      const response = await propertyAPI.getForSale(0, 100); // Récupérer toutes les propriétés à vendre
+      // La réponse est paginée, extraire le contenu
+      const propertiesData = response.data?.content || response.data || [];
+      setProperties(Array.isArray(propertiesData) ? propertiesData : []);
     } catch (err) {
       console.error('Error loading properties for sale:', err);
       setError('Failed to load properties. Please make sure you are logged in.');
@@ -60,15 +62,20 @@ function PropertiesForSale() {
     setLoading(true);
     setError('');
     try {
-      const params = {};
+      const params = {
+        transactionType: 'SALE', // Filtrer uniquement les propriétés à vendre
+        status: 'AVAILABLE'
+      };
       if (filters.city) params.city = filters.city;
       if (filters.type) params.type = filters.type;
       if (filters.minPrice) params.minPrice = parseFloat(filters.minPrice);
       if (filters.maxPrice) params.maxPrice = parseFloat(filters.maxPrice);
       if (filters.minRooms) params.minRooms = parseInt(filters.minRooms);
       
-      const response = await saleAPI.searchForSale(params);
-      setProperties(response.data || []);
+      const response = await propertyAPI.search(params);
+      // La réponse est paginée, extraire le contenu
+      const propertiesData = response.data?.content || response.data || [];
+      setProperties(Array.isArray(propertiesData) ? propertiesData : []);
     } catch (err) {
       console.error('Error searching properties:', err);
       setError('Failed to search properties.');
@@ -90,18 +97,20 @@ function PropertiesForSale() {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'FOR_SALE': return 'success';
+      case 'AVAILABLE': return 'success';
       case 'RESERVED': return 'warning';
       case 'SOLD': return 'error';
+      case 'RENTED': return 'info';
       default: return 'default';
     }
   };
 
   const getStatusLabel = (status) => {
     switch (status) {
-      case 'FOR_SALE': return 'For Sale';
+      case 'AVAILABLE': return 'Available';
       case 'RESERVED': return 'Reserved';
       case 'SOLD': return 'Sold';
+      case 'RENTED': return 'Rented';
       default: return status;
     }
   };
@@ -262,27 +271,37 @@ function PropertiesForSale() {
                       </Typography>
                       
                       <Box display="flex" gap={1} mb={2} flexWrap="wrap">
-                        <Chip 
-                          label={property.type} 
-                          size="small" 
-                          color="primary"
-                          variant="outlined"
-                        />
-                        <Chip
-                          label={getStatusLabel(property.saleStatus)}
-                          size="small"
-                          color={getStatusColor(property.saleStatus)}
-                        />
+                        {property.type && (
+                          <Chip 
+                            label={property.type} 
+                            size="small" 
+                            color="primary"
+                            variant="outlined"
+                          />
+                        )}
+                        {property.status && (
+                          <Chip
+                            label={getStatusLabel(property.status)}
+                            size="small"
+                            color={getStatusColor(property.status)}
+                          />
+                        )}
                       </Box>
                       
                       <Typography variant="h5" color="primary" gutterBottom fontWeight="bold">
-                        ${property.salePrice?.toLocaleString()}
+                        ${(property.price || 0).toLocaleString()}
                       </Typography>
                       
                       <Typography variant="body2" color="text.secondary">
-                        🛏️ {property.rooms} rooms • 🚿 {property.bathrooms} baths • 
-                        📐 {property.surface} m²
+                        🛏️ {property.rooms || 0} rooms • 🚿 {property.bathrooms || 0} baths • 
+                        📐 {property.surface || 0} m²
                       </Typography>
+                      
+                      {property.address && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                          📍 {property.address}
+                        </Typography>
+                      )}
                       
                       {property.description && (
                         <Typography 
@@ -315,9 +334,9 @@ function PropertiesForSale() {
                         fullWidth
                         variant="contained"
                         onClick={() => navigate(`/properties/sale/${property.id}`)}
-                        disabled={property.saleStatus === 'SOLD'}
+                        disabled={property.status === 'SOLD' || property.status === 'sold'}
                       >
-                        {property.saleStatus === 'SOLD' ? 'Sold' : 'View Details'}
+                        {(property.status === 'SOLD' || property.status === 'sold') ? 'Sold' : 'View Details'}
                       </Button>
                     </CardActions>
                   </Card>

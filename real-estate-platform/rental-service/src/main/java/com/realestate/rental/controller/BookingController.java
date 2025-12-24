@@ -65,7 +65,18 @@ public class BookingController {
     
     @PostMapping
     @Operation(summary = "Create a new booking")
-    public ResponseEntity<BookingDTO> createBooking(@Valid @RequestBody BookingRequestDTO request) {
+    public ResponseEntity<BookingDTO> createBooking(
+            @Valid @RequestBody BookingRequestDTO request,
+            HttpServletRequest httpRequest) {
+        // Pour les clients, utiliser l'email du token JWT au lieu de l'email fourni dans la requête
+        String role = roleChecker.getRoleFromRequest(httpRequest);
+        if (role.equals("CLIENT")) {
+            String userEmail = roleChecker.getEmailFromRequest(httpRequest);
+            if (userEmail != null && !userEmail.isEmpty()) {
+                // Override l'email avec celui du token JWT pour garantir la cohérence
+                request.setGuestEmail(userEmail);
+            }
+        }
         BookingDTO created = bookingService.createBooking(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
@@ -165,6 +176,18 @@ public class BookingController {
         response.put("startDate", startDate);
         response.put("endDate", endDate);
         response.put("available", isAvailable);
+        
+        return ResponseEntity.ok(response);
+    }
+    
+    @GetMapping("/booked-dates/{propertyId}")
+    @Operation(summary = "Get all booked dates for a property (by propertyId)")
+    public ResponseEntity<Map<String, Object>> getBookedDates(@PathVariable Long propertyId) {
+        List<String> bookedDates = bookingService.getBookedDatesByPropertyId(propertyId);
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("propertyId", propertyId);
+        response.put("bookedDates", bookedDates);
         
         return ResponseEntity.ok(response);
     }

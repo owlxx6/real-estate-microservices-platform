@@ -22,7 +22,6 @@ import java.util.Map;
 @RequestMapping("/api/properties")
 @RequiredArgsConstructor
 @Tag(name = "Properties", description = "Property management APIs - Sale and Rental")
-@CrossOrigin(origins = "*")
 public class PropertyController {
     
     private final PropertyService propertyService;

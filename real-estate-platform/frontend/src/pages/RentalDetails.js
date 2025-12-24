@@ -20,9 +20,11 @@ import {
 } from '@mui/material';
 import PeopleIcon from '@mui/icons-material/People';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
-import { rentalAPI, bookingAPI } from '../services/rentalAPI';
+import { bookingAPI } from '../services/rentalAPI';
+import { propertyAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import RoleGuard from '../components/RoleGuard';
+import { getEmailFromToken, getUsername } from '../utils/auth';
 
 function RentalDetails() {
   const { id } = useParams();
@@ -36,6 +38,7 @@ function RentalDetails() {
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [openConfirm, setOpenConfirm] = useState(false);
+  const [bookedDates, setBookedDates] = useState([]);
   
   const [bookingForm, setBookingForm] = useState({
     startDate: location.state?.startDate || '',
@@ -51,8 +54,24 @@ function RentalDetails() {
     setLoading(true);
     setError('');
     try {
-      const response = await rentalAPI.getRentalById(id);
-      setRental(response.data);
+      const response = await propertyAPI.getById(id);
+      const property = response.data;
+      // Vérifier que c'est bien une propriété de location
+      if (property.transactionType !== 'RENTAL') {
+        setError('This property is not available for rental.');
+        return;
+      }
+      setRental(property);
+      
+      // Charger les dates réservées
+      try {
+        const bookedDatesResponse = await bookingAPI.getBookedDates(id);
+        setBookedDates(bookedDatesResponse.data.bookedDates || []);
+      } catch (err) {
+        console.warn('Could not load booked dates:', err);
+        // Ne pas bloquer si on ne peut pas charger les dates réservées
+        setBookedDates([]);
+      }
     } catch (err) {
       console.error('Error loading rental:', err);
       setError('Failed to load rental details.');
@@ -64,6 +83,18 @@ function RentalDetails() {
   useEffect(() => {
     loadRentalDetails();
   }, [loadRentalDetails]);
+
+  // Pré-remplir l'email et le nom de l'utilisateur connecté
+  useEffect(() => {
+    const userEmail = getEmailFromToken();
+    const username = getUsername();
+    if (userEmail && !bookingForm.guestEmail) {
+      setBookingForm(prev => ({ ...prev, guestEmail: userEmail }));
+    }
+    if (username && !bookingForm.guestName) {
+      setBookingForm(prev => ({ ...prev, guestName: username }));
+    }
+  }, []);
 
   const calculateNights = () => {
     if (!bookingForm.startDate || !bookingForm.endDate) return 0;
@@ -78,11 +109,36 @@ function RentalDetails() {
   const calculateTotal = () => {
     if (!rental) return 0;
     const nights = calculateNights();
-    const nightsTotal = nights * rental.pricePerNight;
-    const cleaningFee = rental.cleaningFee || 0;
-    return nightsTotal + cleaningFee;
+    // Utiliser monthlyRent si disponible, sinon price, divisé par 30 pour obtenir le prix par nuit
+    const pricePerNight = rental.monthlyRent ? (rental.monthlyRent / 30) : (rental.price ? (rental.price / 30) : 0);
+    const nightsTotal = nights * pricePerNight;
+    const deposit = rental.depositAmount || 0;
+    return nightsTotal + deposit;
   };
 
+  // Vérifier si une date est réservée
+  const isDateBooked = (dateString) => {
+    return bookedDates.includes(dateString);
+  };
+  
+  // Vérifier si la période sélectionnée chevauche avec des dates réservées
+  const hasDateConflict = () => {
+    if (!bookingForm.startDate || !bookingForm.endDate) return false;
+    
+    const start = new Date(bookingForm.startDate);
+    const end = new Date(bookingForm.endDate);
+    const conflictDates = [];
+    
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().split('T')[0];
+      if (isDateBooked(dateStr)) {
+        conflictDates.push(dateStr);
+      }
+    }
+    
+    return conflictDates.length > 0;
+  };
+  
   // Fonction de validation complète du formulaire
   const isFormValid = () => {
     // Vérifier que tous les champs requis sont remplis
@@ -99,14 +155,20 @@ function RentalDetails() {
       }
     }
     
+    // Vérifier qu'il n'y a pas de conflit avec les dates réservées
+    if (hasDateConflict()) {
+      return false;
+    }
+    
     // Vérifier que l'email est valide
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(bookingForm.guestEmail)) {
       return false;
     }
     
-    // Vérifier que le nombre de guests est valide
-    if (!rental || bookingForm.numberOfGuests < 1 || bookingForm.numberOfGuests > rental.maxGuests) {
+    // Vérifier que le nombre de guests est valide (on peut utiliser rooms * 2 comme estimation)
+    const maxGuests = rental ? (rental.rooms || 1) * 2 : 10;
+    if (!rental || bookingForm.numberOfGuests < 1 || bookingForm.numberOfGuests > maxGuests) {
       return false;
     }
     
@@ -126,8 +188,9 @@ function RentalDetails() {
     setSuccess('');
     
     try {
+      // Utiliser propertyId - le backend créera automatiquement le RentalProperty si nécessaire
       const bookingData = {
-        rentalPropertyId: parseInt(id),
+        propertyId: parseInt(id), // Le backend créera automatiquement le RentalProperty
         startDate: bookingForm.startDate,
         endDate: bookingForm.endDate,
         numberOfGuests: parseInt(bookingForm.numberOfGuests),
@@ -186,27 +249,27 @@ function RentalDetails() {
         <Grid item xs={12} md={7}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h4" gutterBottom fontWeight="bold">
-              {rental.propertyTitle}
+              {rental.title}
             </Typography>
             
             <Typography variant="h6" color="text.secondary" gutterBottom>
-              📍 {rental.propertyAddress}, {rental.propertyCity}
+              📍 {rental.address || ''}, {rental.city}
             </Typography>
             
             <Box display="flex" gap={1} mb={3} flexWrap="wrap">
-              <Chip label={rental.propertyType} color="primary" />
+              {rental.type && <Chip label={rental.type} color="primary" />}
               <Chip 
                 icon={<PeopleIcon />} 
-                label={`Up to ${rental.maxGuests} guests`} 
+                label={`Up to ${(rental.rooms || 1) * 2} guests`} 
               />
               <Chip 
-                label={`${rental.propertyRooms} bedrooms`} 
+                label={`${rental.rooms || 0} bedrooms`} 
               />
               <Chip 
-                label={`${rental.propertyBathrooms} bathrooms`} 
+                label={`${rental.bathrooms || 0} bathrooms`} 
               />
               <Chip 
-                label={`${rental.propertySurface} m²`} 
+                label={`${rental.surface || 0} m²`} 
               />
             </Box>
 
@@ -216,42 +279,46 @@ function RentalDetails() {
               💰 Pricing
             </Typography>
             <Typography variant="h4" color="primary" gutterBottom fontWeight="bold">
-              ${rental.pricePerNight}
+              ${((rental.monthlyRent || rental.price || 0) / 30).toFixed(2)}
               <Typography component="span" variant="body1" color="text.secondary">
                 {' '}/ night
               </Typography>
             </Typography>
-            {rental.cleaningFee > 0 && (
+            <Typography variant="body2" color="text.secondary">
+              ${(rental.monthlyRent || rental.price || 0).toLocaleString()} / month
+            </Typography>
+            {rental.depositAmount && rental.depositAmount > 0 && (
               <Typography variant="body2" color="text.secondary">
-                + ${rental.cleaningFee} cleaning fee
+                Deposit: ${rental.depositAmount.toLocaleString()}
               </Typography>
             )}
 
             <Divider sx={{ my: 2 }} />
 
-            <Typography variant="h6" gutterBottom>
-              ⏰ Check-in / Check-out
-            </Typography>
-            <Box display="flex" gap={2}>
-              <Chip 
-                icon={<AccessTimeIcon />}
-                label={`Check-in: ${rental.checkInTime}`} 
-              />
-              <Chip 
-                icon={<AccessTimeIcon />}
-                label={`Check-out: ${rental.checkOutTime}`} 
-              />
-            </Box>
-
-            {rental.rules && (
+            {rental.description && (
               <>
                 <Divider sx={{ my: 2 }} />
                 <Typography variant="h6" gutterBottom>
-                  📋 House Rules
+                  📝 Description
                 </Typography>
                 <Typography variant="body2" sx={{ whiteSpace: 'pre-line' }}>
-                  {rental.rules}
+                  {rental.description}
                 </Typography>
+              </>
+            )}
+
+            {(rental.hasParking || rental.hasGarden || rental.hasPool || rental.hasElevator) && (
+              <>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="h6" gutterBottom>
+                  ✨ Features
+                </Typography>
+                <Box display="flex" gap={1} flexWrap="wrap">
+                  {rental.hasParking && <Chip label="🅿️ Parking" size="small" />}
+                  {rental.hasGarden && <Chip label="🌳 Garden" size="small" />}
+                  {rental.hasPool && <Chip label="🏊 Pool" size="small" />}
+                  {rental.hasElevator && <Chip label="🛗 Elevator" size="small" />}
+                </Box>
               </>
             )}
           </Paper>
@@ -275,9 +342,23 @@ function RentalDetails() {
                       type="date"
                       InputLabelProps={{ shrink: true }}
                       value={bookingForm.startDate}
-                      onChange={(e) => setBookingForm({ ...bookingForm, startDate: e.target.value })}
+                      onChange={(e) => {
+                        const selectedDate = e.target.value;
+                        // Vérifier si la date est réservée
+                        if (isDateBooked(selectedDate)) {
+                          setError('This date is already booked. Please select another date.');
+                          return;
+                        }
+                        setError('');
+                        setBookingForm({ ...bookingForm, startDate: selectedDate });
+                      }}
                       required
-                      inputProps={{ min: new Date().toISOString().split('T')[0] }}
+                      inputProps={{ 
+                        min: new Date().toISOString().split('T')[0],
+                        // Désactiver les dates réservées (via onInvalid)
+                      }}
+                      error={bookingForm.startDate && isDateBooked(bookingForm.startDate)}
+                      helperText={bookingForm.startDate && isDateBooked(bookingForm.startDate) ? 'This date is already booked' : ''}
                     />
                   </Grid>
 
@@ -288,9 +369,20 @@ function RentalDetails() {
                       type="date"
                       InputLabelProps={{ shrink: true }}
                       value={bookingForm.endDate}
-                      onChange={(e) => setBookingForm({ ...bookingForm, endDate: e.target.value })}
+                      onChange={(e) => {
+                        const selectedDate = e.target.value;
+                        // Vérifier si la date est réservée
+                        if (isDateBooked(selectedDate)) {
+                          setError('This date is already booked. Please select another date.');
+                          return;
+                        }
+                        setError('');
+                        setBookingForm({ ...bookingForm, endDate: selectedDate });
+                      }}
                       required
                       inputProps={{ min: bookingForm.startDate || new Date().toISOString().split('T')[0] }}
+                      error={bookingForm.endDate && isDateBooked(bookingForm.endDate)}
+                      helperText={bookingForm.endDate && isDateBooked(bookingForm.endDate) ? 'This date is already booked' : ''}
                     />
                   </Grid>
 
@@ -302,7 +394,7 @@ function RentalDetails() {
                       value={bookingForm.numberOfGuests}
                       onChange={(e) => setBookingForm({ ...bookingForm, numberOfGuests: e.target.value })}
                       required
-                      inputProps={{ min: 1, max: rental.maxGuests }}
+                      inputProps={{ min: 1, max: (rental.rooms || 1) * 2 }}
                     />
                   </Grid>
 
@@ -348,6 +440,19 @@ function RentalDetails() {
                   </Grid>
                 </Grid>
 
+                {/* Afficher les dates réservées */}
+                {bookedDates.length > 0 && (
+                  <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
+                    <Typography variant="body2" fontWeight="bold" gutterBottom>
+                      📅 Booked Dates (Unavailable):
+                    </Typography>
+                    <Typography variant="body2">
+                      {bookedDates.slice(0, 10).map(date => new Date(date).toLocaleDateString()).join(', ')}
+                      {bookedDates.length > 10 && ` ... and ${bookedDates.length - 10} more dates`}
+                    </Typography>
+                  </Alert>
+                )}
+
                 {/* Messages de validation */}
                 {!bookingForm.startDate && (
                   <Alert severity="warning" sx={{ mt: 2 }}>
@@ -371,6 +476,23 @@ function RentalDetails() {
                       </Alert>
                     );
                   }
+                  
+                  // Vérifier les conflits avec les dates réservées
+                  if (hasDateConflict()) {
+                    const conflictDates = [];
+                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                      const dateStr = d.toISOString().split('T')[0];
+                      if (isDateBooked(dateStr)) {
+                        conflictDates.push(new Date(dateStr).toLocaleDateString());
+                      }
+                    }
+                    return (
+                      <Alert severity="error" sx={{ mt: 2 }}>
+                        The selected period overlaps with booked dates: {conflictDates.join(', ')}. Please select different dates.
+                      </Alert>
+                    );
+                  }
+                  
                   return null;
                 })()}
 
@@ -404,9 +526,9 @@ function RentalDetails() {
                   </Alert>
                 )}
 
-                {bookingForm.numberOfGuests && rental && bookingForm.numberOfGuests > rental.maxGuests && (
+                {bookingForm.numberOfGuests && rental && bookingForm.numberOfGuests > ((rental.rooms || 1) * 2) && (
                   <Alert severity="error" sx={{ mt: 2 }}>
-                    Number of guests cannot exceed {rental.maxGuests}.
+                    Number of guests cannot exceed {((rental.rooms || 1) * 2)}.
                   </Alert>
                 )}
 
@@ -418,16 +540,16 @@ function RentalDetails() {
                     </Typography>
                     <Box display="flex" justifyContent="space-between" mb={1}>
                       <Typography>
-                        ${rental.pricePerNight} × {nights} nights
+                        ${((rental.monthlyRent || rental.price || 0) / 30).toFixed(2)} × {nights} nights
                       </Typography>
                       <Typography>
-                        ${(nights * rental.pricePerNight).toFixed(2)}
+                        ${(nights * ((rental.monthlyRent || rental.price || 0) / 30)).toFixed(2)}
                       </Typography>
                     </Box>
-                    {rental.cleaningFee > 0 && (
+                    {rental.depositAmount && rental.depositAmount > 0 && (
                       <Box display="flex" justifyContent="space-between" mb={1}>
-                        <Typography>Cleaning fee</Typography>
-                        <Typography>${rental.cleaningFee.toFixed(2)}</Typography>
+                        <Typography>Deposit</Typography>
+                        <Typography>${rental.depositAmount.toFixed(2)}</Typography>
                       </Box>
                     )}
                     <Divider sx={{ my: 1 }} />
@@ -481,7 +603,7 @@ function RentalDetails() {
         <DialogTitle>Confirm Your Booking</DialogTitle>
         <DialogContent>
           <Typography variant="body1" gutterBottom>
-            <strong>Property:</strong> {rental.propertyTitle}
+            <strong>Property:</strong> {rental.title}
           </Typography>
           <Typography variant="body1" gutterBottom>
             <strong>Check-in:</strong> {bookingForm.startDate}

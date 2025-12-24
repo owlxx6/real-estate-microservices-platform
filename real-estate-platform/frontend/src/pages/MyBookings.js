@@ -48,9 +48,10 @@ function MyBookings() {
     setLoading(true);
     setError('');
     try {
-      // Récupérer l'email de l'utilisateur du localStorage ou du token
-      const userEmail = localStorage.getItem('userEmail') || 'agent1@example.com';
-      const response = await bookingAPI.getBookingsByGuest(userEmail);
+      // Utiliser getAllBookings() qui filtre automatiquement par rôle côté backend
+      // Pour CLIENT, le backend retourne uniquement ses propres réservations
+      // basé sur l'email extrait du token JWT (header X-User-Email)
+      const response = await bookingAPI.getAllBookings();
       setBookings(response.data || []);
     } catch (err) {
       console.error('Error loading bookings:', err);

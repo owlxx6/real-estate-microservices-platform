@@ -39,6 +39,12 @@ export const menuItems = [
     allowedRoles: [ROLES.CLIENT],
     separator: false
   },
+  {
+    label: 'My Inquiries',
+    path: '/my-inquiries',
+    allowedRoles: [ROLES.CLIENT],
+    separator: false
+  },
   
   // AGENT et ADMIN - Gestion opérationnelle
   {
@@ -46,6 +52,12 @@ export const menuItems = [
     path: '/dashboard',
     allowedRoles: [ROLES.ADMIN, ROLES.AGENT],
     separator: true
+  },
+  {
+    label: 'My Contacts & Visits',
+    path: '/my-contacts-visits',
+    allowedRoles: [ROLES.ADMIN, ROLES.AGENT],
+    separator: false
   },
   {
     label: 'Manage Sales',

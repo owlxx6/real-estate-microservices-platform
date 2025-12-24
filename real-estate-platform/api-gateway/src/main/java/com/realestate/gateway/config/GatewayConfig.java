@@ -45,6 +45,11 @@ public class GatewayConfig {
                         .filters(f -> f.filter(jwtFilter.apply(new JwtAuthenticationFilter.Config())))
                         .uri("lb://client-service"))
                 
+                .route("client-service-inquiries", r -> r
+                        .path("/api/inquiries/**")
+                        .filters(f -> f.filter(jwtFilter.apply(new JwtAuthenticationFilter.Config())))
+                        .uri("lb://client-service"))
+                
                 .route("client-service-users", r -> r
                         .path("/api/users/**")
                         .filters(f -> f.filter(jwtFilter.apply(new JwtAuthenticationFilter.Config())))

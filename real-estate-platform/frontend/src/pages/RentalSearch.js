@@ -18,7 +18,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import PeopleIcon from '@mui/icons-material/People';
 import HomeIcon from '@mui/icons-material/Home';
 import { useNavigate } from 'react-router-dom';
-import { rentalAPI } from '../services/rentalAPI';
+import { propertyAPI } from '../services/api';
 
 function RentalSearch() {
   const navigate = useNavigate();
@@ -42,8 +42,10 @@ function RentalSearch() {
     setLoading(true);
     setError('');
     try {
-      const response = await rentalAPI.getAllRentals();
-      setRentals(response.data || []);
+      const response = await propertyAPI.getForRent(0, 100); // Récupérer toutes les propriétés à louer
+      // La réponse est paginée, extraire le contenu
+      const rentalsData = response.data?.content || response.data || [];
+      setRentals(Array.isArray(rentalsData) ? rentalsData : []);
     } catch (err) {
       console.error('Error loading rentals:', err);
       setError('Failed to load rentals. Please make sure you are logged in.');
@@ -56,15 +58,19 @@ function RentalSearch() {
     setLoading(true);
     setError('');
     try {
-      const params = {};
-      if (filters.startDate) params.startDate = filters.startDate;
-      if (filters.endDate) params.endDate = filters.endDate;
-      if (filters.guests) params.guests = parseInt(filters.guests);
+      const params = {
+        transactionType: 'RENTAL', // Filtrer uniquement les propriétés à louer
+        status: 'AVAILABLE'
+      };
       if (filters.minPrice) params.minPrice = parseFloat(filters.minPrice);
       if (filters.maxPrice) params.maxPrice = parseFloat(filters.maxPrice);
+      // Note: startDate, endDate, guests ne sont pas gérés par property-service
+      // Ces filtres devraient être gérés par rental-service si nécessaire
       
-      const response = await rentalAPI.searchRentals(params);
-      setRentals(response.data || []);
+      const response = await propertyAPI.search(params);
+      // La réponse est paginée, extraire le contenu
+      const rentalsData = response.data?.content || response.data || [];
+      setRentals(Array.isArray(rentalsData) ? rentalsData : []);
     } catch (err) {
       console.error('Error searching rentals:', err);
       setError('Failed to search rentals.');
@@ -226,47 +232,77 @@ function RentalSearch() {
                   >
                     <CardContent sx={{ flexGrow: 1 }}>
                       <Typography variant="h6" gutterBottom noWrap>
-                        {rental.propertyTitle || 'Property'}
+                        {rental.title || 'Property'}
                       </Typography>
                       
                       <Typography variant="body2" color="text.secondary" gutterBottom>
-                        📍 {rental.propertyCity}
+                        📍 {rental.city}
                       </Typography>
                       
                       <Box display="flex" gap={1} mb={2} flexWrap="wrap">
-                        <Chip 
-                          label={rental.propertyType} 
-                          size="small" 
-                          color="primary"
-                          variant="outlined"
-                        />
-                        <Chip
-                          icon={<PeopleIcon />}
-                          label={`${rental.maxGuests} guests`}
-                          size="small"
-                        />
+                        {rental.type && (
+                          <Chip 
+                            label={rental.type} 
+                            size="small" 
+                            color="primary"
+                            variant="outlined"
+                          />
+                        )}
+                        {rental.transactionType && (
+                          <Chip
+                            label={rental.transactionType}
+                            size="small"
+                            color="secondary"
+                            variant="outlined"
+                          />
+                        )}
                       </Box>
                       
                       <Box mb={1}>
                         <Typography variant="h5" color="primary" fontWeight="bold">
-                          ${rental.pricePerNight}/night
+                          ${(rental.monthlyRent || rental.price || 0).toLocaleString()}/month
                         </Typography>
-                        {rental.cleaningFee > 0 && (
+                        {rental.depositAmount && rental.depositAmount > 0 && (
                           <Typography variant="body2" color="text.secondary">
-                            + ${rental.cleaningFee} cleaning fee
+                            Deposit: ${rental.depositAmount.toLocaleString()}
                           </Typography>
                         )}
                       </Box>
                       
                       <Typography variant="body2" color="text.secondary">
-                        🛏️ {rental.propertyRooms} rooms • 🚿 {rental.propertyBathrooms} baths • 
-                        📐 {rental.propertySurface} m²
+                        🛏️ {rental.rooms || 0} rooms • 🚿 {rental.bathrooms || 0} baths • 
+                        📐 {rental.surface || 0} m²
                       </Typography>
                       
-                      <Box mt={2}>
-                        <Typography variant="caption" color="text.secondary">
-                          Check-in: {rental.checkInTime} • Check-out: {rental.checkOutTime}
+                      {rental.address && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                          📍 {rental.address}
                         </Typography>
+                      )}
+                      
+                      {rental.description && (
+                        <Typography 
+                          variant="body2" 
+                          color="text.secondary" 
+                          sx={{ 
+                            mt: 1, 
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                          }}
+                        >
+                          {rental.description}
+                        </Typography>
+                      )}
+                      
+                      {/* Features */}
+                      <Box mt={1} display="flex" gap={0.5} flexWrap="wrap">
+                        {rental.hasParking && <Chip label="🅿️ Parking" size="small" variant="outlined" />}
+                        {rental.hasGarden && <Chip label="🌳 Garden" size="small" variant="outlined" />}
+                        {rental.hasPool && <Chip label="🏊 Pool" size="small" variant="outlined" />}
+                        {rental.hasElevator && <Chip label="🛗 Elevator" size="small" variant="outlined" />}
                       </Box>
                     </CardContent>
                     
@@ -278,7 +314,7 @@ function RentalSearch() {
                           state: { startDate: filters.startDate, endDate: filters.endDate }
                         })}
                       >
-                        View Details & Book
+                        View Details
                       </Button>
                     </CardActions>
                   </Card>

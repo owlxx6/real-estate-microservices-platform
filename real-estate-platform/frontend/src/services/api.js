@@ -106,10 +106,37 @@ export const propertyAPI = {
   delete: (id) => api.delete(`/api/properties/${id}`),
   getByAgent: (agentId) => api.get(`/api/properties/agent/${agentId}`),
   getStatistics: () => api.get('/api/properties/statistics'),
+  getForSale: (page = 0, size = 20) => api.get(`/api/properties/for-sale?page=${page}&size=${size}`),
+  getForRent: (page = 0, size = 20) => api.get(`/api/properties/for-rent?page=${page}&size=${size}`),
 };
 
 export const dashboardAPI = {
   getStatistics: () => api.get('/api/dashboard/statistics'),
+};
+
+export const inquiryAPI = {
+  getAll: () => api.get('/api/inquiries'),
+  getById: (id) => api.get(`/api/inquiries/${id}`),
+  create: (inquiry) => api.post('/api/inquiries', inquiry),
+  update: (id, inquiry) => api.put(`/api/inquiries/${id}`, inquiry),
+  delete: (id) => api.delete(`/api/inquiries/${id}`),
+  getByProperty: (propertyId) => api.get(`/api/inquiries/property/${propertyId}`),
+  getByAgent: (agentId) => api.get(`/api/inquiries/agent/${agentId}`),
+  getByEmail: (email) => api.get(`/api/inquiries/email/${encodeURIComponent(email)}`),
+};
+
+export const visitAPI = {
+  getAll: () => api.get('/api/visits'),
+  getById: (id) => api.get(`/api/visits/${id}`),
+  create: (visit) => api.post('/api/visits', visit),
+  update: (id, visit) => api.put(`/api/visits/${id}`, visit),
+  delete: (id) => api.delete(`/api/visits/${id}`),
+  getByProperty: (propertyId) => api.get(`/api/visits/property/${propertyId}`),
+  getByClient: (clientId) => api.get(`/api/visits/client/${clientId}`),
+};
+
+export const clientAPI = {
+  getById: (id) => api.get(`/api/clients/${id}`),
 };
 
 export default api;

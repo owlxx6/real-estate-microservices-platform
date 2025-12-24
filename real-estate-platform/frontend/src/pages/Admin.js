@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Box, 
   Typography, 
@@ -27,6 +28,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import ContactsIcon from '@mui/icons-material/Contacts';
 import { propertyAPI } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 
@@ -39,6 +41,7 @@ function TabPanel({ children, value, index }) {
 }
 
 function Admin() {
+  const navigate = useNavigate();
   const { isAdmin: userIsAdmin, isLoading: authLoading } = useAuth();
   const [tabValue, setTabValue] = useState(0);
   const [properties, setProperties] = useState([]);
@@ -48,6 +51,7 @@ function Admin() {
     title: '',
     description: '',
     type: 'APARTMENT',
+    transactionType: 'SALE',
     price: '',
     surface: '',
     rooms: '',
@@ -101,6 +105,7 @@ function Admin() {
         title: property.title,
         description: property.description,
         type: property.type,
+        transactionType: property.transactionType || 'SALE',
         price: property.price,
         surface: property.surface,
         rooms: property.rooms,
@@ -116,6 +121,7 @@ function Admin() {
         title: '',
         description: '',
         type: 'APARTMENT',
+        transactionType: 'SALE',
         price: '',
         surface: '',
         rooms: '',
@@ -143,18 +149,45 @@ function Admin() {
     setMessage({ type: '', text: '' });
     
     try {
+      // Validation des champs requis
+      if (!formData.title || !formData.description || !formData.address || !formData.city) {
+        setMessage({ type: 'error', text: 'Please fill in all required fields.' });
+        setLoading(false);
+        return;
+      }
+      
+      const price = parseFloat(formData.price);
+      if (!price || price <= 0) {
+        setMessage({ type: 'error', text: 'Price must be greater than 0.' });
+        setLoading(false);
+        return;
+      }
+      
+      // Convertir les valeurs numériques et s'assurer que transactionType est présent
+      const submitData = {
+        ...formData,
+        price: price,
+        surface: parseInt(formData.surface) || 1,
+        rooms: parseInt(formData.rooms) || 0,
+        bathrooms: Math.max(0, parseInt(formData.bathrooms) || 0), // S'assurer que bathrooms >= 0
+        agentId: parseInt(formData.agentId) || 1,
+        transactionType: formData.transactionType || 'SALE'
+      };
+      
       if (currentProperty) {
-        await propertyAPI.update(currentProperty.id, formData);
+        await propertyAPI.update(currentProperty.id, submitData);
         setMessage({ type: 'success', text: 'Property updated successfully!' });
       } else {
-        await propertyAPI.create(formData);
+        await propertyAPI.create(submitData);
         setMessage({ type: 'success', text: 'Property created successfully!' });
       }
       handleCloseDialog();
       loadProperties();
       setTimeout(() => setMessage({ type: '', text: '' }), 3000);
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to save property. Please try again.' });
+      console.error('Error saving property:', err);
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || 'Failed to save property. Please try again.';
+      setMessage({ type: 'error', text: errorMessage });
     } finally {
       setLoading(false);
     }
@@ -234,8 +267,17 @@ function Admin() {
                     <TableCell align="right">
                       <IconButton 
                         size="small" 
+                        color="info"
+                        onClick={() => navigate(`/properties/${property.id}/contacts`)}
+                        title="View Contacts & Visits"
+                      >
+                        <ContactsIcon />
+                      </IconButton>
+                      <IconButton 
+                        size="small" 
                         color="primary"
                         onClick={() => handleOpenDialog(property)}
+                        title="Edit Property"
                       >
                         <EditIcon />
                       </IconButton>
@@ -243,6 +285,7 @@ function Admin() {
                         size="small" 
                         color="error"
                         onClick={() => handleDelete(property.id)}
+                        title="Delete Property"
                       >
                         <DeleteIcon />
                       </IconButton>
@@ -316,12 +359,30 @@ function Admin() {
                 label="Type"
                 value={formData.type}
                 onChange={(e) => handleFormChange('type', e.target.value)}
+                required
               >
                 <MenuItem value="APARTMENT">Apartment</MenuItem>
                 <MenuItem value="HOUSE">House</MenuItem>
                 <MenuItem value="VILLA">Villa</MenuItem>
                 <MenuItem value="LAND">Land</MenuItem>
                 <MenuItem value="COMMERCIAL">Commercial</MenuItem>
+                <MenuItem value="OFFICE">Office</MenuItem>
+                <MenuItem value="STUDIO">Studio</MenuItem>
+                <MenuItem value="DUPLEX">Duplex</MenuItem>
+                <MenuItem value="PENTHOUSE">Penthouse</MenuItem>
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                select
+                label="Transaction Type"
+                value={formData.transactionType}
+                onChange={(e) => handleFormChange('transactionType', e.target.value)}
+                required
+              >
+                <MenuItem value="SALE">Sale</MenuItem>
+                <MenuItem value="RENTAL">Rental</MenuItem>
               </TextField>
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -331,10 +392,13 @@ function Admin() {
                 label="Status"
                 value={formData.status}
                 onChange={(e) => handleFormChange('status', e.target.value)}
+                required
               >
                 <MenuItem value="AVAILABLE">Available</MenuItem>
                 <MenuItem value="RESERVED">Reserved</MenuItem>
                 <MenuItem value="SOLD">Sold</MenuItem>
+                <MenuItem value="RENTED">Rented</MenuItem>
+                <MenuItem value="UNAVAILABLE">Unavailable</MenuItem>
               </TextField>
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -374,6 +438,7 @@ function Admin() {
                 type="number"
                 value={formData.bathrooms}
                 onChange={(e) => handleFormChange('bathrooms', e.target.value)}
+                inputProps={{ min: 0 }}
                 required
               />
             </Grid>

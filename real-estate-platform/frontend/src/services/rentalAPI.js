@@ -84,5 +84,8 @@ export const bookingAPI = {
   
   // Vérifier la disponibilité
   checkAvailability: (params) => axios.get(`${API_URL}/bookings/check-availability`, { params }),
+  
+  // Récupérer les dates réservées pour une propriété
+  getBookedDates: (propertyId) => axios.get(`${API_URL}/bookings/booked-dates/${propertyId}`),
 };
 
