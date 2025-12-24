@@ -4,8 +4,10 @@ import com.realestate.rental.dto.CalendarDTO;
 import com.realestate.rental.dto.RentalPropertyDTO;
 import com.realestate.rental.model.RentalProperty;
 import com.realestate.rental.service.RentalPropertyService;
+import com.realestate.rental.util.RoleChecker;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -25,6 +27,7 @@ import java.util.Map;
 public class RentalPropertyController {
     
     private final RentalPropertyService rentalPropertyService;
+    private final RoleChecker roleChecker;
     
     @GetMapping
     @Operation(summary = "Get all active rental properties")
@@ -48,24 +51,32 @@ public class RentalPropertyController {
     }
     
     @PostMapping
-    @Operation(summary = "Create/activate a property for rental")
-    public ResponseEntity<RentalPropertyDTO> createRentalProperty(@Valid @RequestBody RentalProperty rentalProperty) {
+    @Operation(summary = "Create/activate a property for rental - AGENT/ADMIN only")
+    public ResponseEntity<RentalPropertyDTO> createRentalProperty(
+            @Valid @RequestBody RentalProperty rentalProperty,
+            HttpServletRequest request) {
+        roleChecker.checkAnyRole(request, RoleChecker.Role.AGENT, RoleChecker.Role.ADMIN);
         RentalPropertyDTO created = rentalPropertyService.createRentalProperty(rentalProperty);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
     
     @PutMapping("/{id}")
-    @Operation(summary = "Update rental property")
+    @Operation(summary = "Update rental property - AGENT/ADMIN only")
     public ResponseEntity<RentalPropertyDTO> updateRentalProperty(
             @PathVariable Long id,
-            @Valid @RequestBody RentalProperty rentalProperty) {
+            @Valid @RequestBody RentalProperty rentalProperty,
+            HttpServletRequest request) {
+        roleChecker.checkAnyRole(request, RoleChecker.Role.AGENT, RoleChecker.Role.ADMIN);
         RentalPropertyDTO updated = rentalPropertyService.updateRentalProperty(id, rentalProperty);
         return ResponseEntity.ok(updated);
     }
     
     @DeleteMapping("/{id}")
-    @Operation(summary = "Deactivate rental property")
-    public ResponseEntity<Void> deactivateRentalProperty(@PathVariable Long id) {
+    @Operation(summary = "Deactivate rental property - AGENT/ADMIN only")
+    public ResponseEntity<Void> deactivateRentalProperty(
+            @PathVariable Long id,
+            HttpServletRequest request) {
+        roleChecker.checkAnyRole(request, RoleChecker.Role.AGENT, RoleChecker.Role.ADMIN);
         rentalPropertyService.deactivateRentalProperty(id);
         return ResponseEntity.noContent().build();
     }
@@ -96,8 +107,9 @@ public class RentalPropertyController {
     }
     
     @GetMapping("/statistics")
-    @Operation(summary = "Get rental statistics")
-    public ResponseEntity<Map<String, Object>> getStatistics() {
+    @Operation(summary = "Get rental statistics - AGENT/ADMIN only")
+    public ResponseEntity<Map<String, Object>> getStatistics(HttpServletRequest request) {
+        roleChecker.checkAnyRole(request, RoleChecker.Role.AGENT, RoleChecker.Role.ADMIN);
         Map<String, Object> stats = rentalPropertyService.getStatistics();
         return ResponseEntity.ok(stats);
     }

@@ -21,13 +21,74 @@ api.interceptors.request.use(
 );
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Ne pas supprimer les données si c'est une réponse de login réussie
+    if (response.config?.url?.includes('/api/auth/login') && response.status === 200) {
+      console.log('Login response intercepted - preserving auth data');
+      return response;
+    }
+    return response;
+  },
   (error) => {
-    if (error.response?.status === 401) {
+    // DEBUG: Log AVANT toute suppression du localStorage
+    console.log('=== API INTERCEPTOR ERROR ===');
+    console.log('Error URL:', error.config?.url);
+    console.log('Error status:', error.response?.status);
+    console.log('Current path:', window.location.pathname);
+    console.log('Stack trace:', new Error().stack);
+    
+    // Ne JAMAIS supprimer les données si l'erreur vient de la page de login
+    if (error.config?.url?.includes('/api/auth/login')) {
+      console.log('Login error intercepted - not clearing auth data');
+      return Promise.reject(error);
+    }
+    
+    // Ne supprimer les données QUE si :
+    // 1. C'est une erreur 401 (non autorisé)
+    // 2. On n'est PAS sur la page de login
+    // 3. Le token existe dans localStorage (sinon c'est peut-être une erreur de timing)
+    const token = localStorage.getItem('token');
+    const isLoginPage = window.location.pathname.includes('/login');
+    
+    if (error.response?.status === 401 && !isLoginPage && token) {
+      // Vérifier que ce n'est pas juste après un login (délai de grâce de 2 secondes)
+      const lastLoginTimeStr = sessionStorage.getItem('lastLoginTime');
+      const now = Date.now();
+      const timeSinceLogin = lastLoginTimeStr ? now - parseInt(lastLoginTimeStr, 10) : Infinity;
+      
+      if (timeSinceLogin < 2000) {
+        console.log('=== PROTECTING AUTH DATA (recent login) ===');
+        console.log('Time since login:', timeSinceLogin, 'ms');
+        console.log('Not clearing auth data - login was too recent');
+        return Promise.reject(error);
+      }
+      
+      console.log('=== CLEARING AUTH DATA (401 error) ===');
+      console.log('Reason: 401 Unauthorized, not on login page, token exists');
+      console.log('Time since login:', timeSinceLogin, 'ms');
+      
+      // Supprimer les données d'authentification
       localStorage.removeItem('token');
       localStorage.removeItem('username');
-      window.location.href = '/login';
+      localStorage.removeItem('role');
+      
+      // Rediriger vers login (sans rechargement de page si possible)
+      if (!isLoginPage) {
+        window.location.href = '/login';
+      }
+    } else {
+      const lastLoginTimeStr = sessionStorage.getItem('lastLoginTime');
+      const timeSinceLogin = lastLoginTimeStr ? Date.now() - parseInt(lastLoginTimeStr, 10) : 'N/A';
+      
+      console.log('=== NOT CLEARING AUTH DATA ===');
+      console.log('Reason:', {
+        is401: error.response?.status === 401,
+        isLoginPage,
+        hasToken: !!token,
+        timeSinceLogin
+      });
     }
+    
     return Promise.reject(error);
   }
 );

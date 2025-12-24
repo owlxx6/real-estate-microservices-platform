@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Box, 
   Typography, 
@@ -21,12 +21,14 @@ import {
   TableRow,
   IconButton,
   Chip,
-  Alert
+  Alert,
+  CircularProgress
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { propertyAPI } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
 
 function TabPanel({ children, value, index }) {
   return (
@@ -37,6 +39,7 @@ function TabPanel({ children, value, index }) {
 }
 
 function Admin() {
+  const { isAdmin: userIsAdmin, isLoading: authLoading } = useAuth();
   const [tabValue, setTabValue] = useState(0);
   const [properties, setProperties] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
@@ -57,18 +60,39 @@ function Admin() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
-  useEffect(() => {
-    loadProperties();
-  }, []);
-
-  const loadProperties = async () => {
+  const loadProperties = useCallback(async () => {
     try {
       const response = await propertyAPI.search({});
       setProperties(response.data.content || []);
     } catch (err) {
       console.error('Error loading properties:', err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (userIsAdmin) {
+      loadProperties();
+    }
+  }, [userIsAdmin, loadProperties]);
+
+  // Check if user is admin - after hooks
+  if (authLoading) {
+    return (
+      <Box display="flex" justifyContent="center" p={4}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!userIsAdmin) {
+    return (
+      <Box sx={{ mt: 4 }}>
+        <Alert severity="error">
+          Accès refusé. Cette page est réservée aux administrateurs.
+        </Alert>
+      </Box>
+    );
+  }
 
   const handleOpenDialog = (property = null) => {
     if (property) {

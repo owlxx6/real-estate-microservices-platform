@@ -1,13 +1,18 @@
 package com.realestate.interfaceapi.feign;
 
-import org.springframework.cloud.openfeign.FeignClient;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-
 import java.util.List;
 import java.util.Map;
 
-@FeignClient(name = "client-service")
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+
+import com.realestate.interfaceapi.dto.AuthRequestDTO;
+import com.realestate.interfaceapi.dto.UserDTO;
+
+@FeignClient(name = "client-service", url = "http://localhost:8082")
 public interface ClientServiceClient {
     
     @GetMapping("/api/clients/{id}")
@@ -27,4 +32,8 @@ public interface ClientServiceClient {
     
     @GetMapping("/api/visits/client/{clientId}")
     List<Map<String, Object>> getVisitsByClient(@PathVariable Long clientId);
+    
+    // Authentication endpoints
+    @PostMapping("/api/users/authenticate")
+    UserDTO authenticate(@RequestBody AuthRequestDTO request);
 }

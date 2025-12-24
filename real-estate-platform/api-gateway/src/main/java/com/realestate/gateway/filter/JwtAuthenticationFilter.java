@@ -1,7 +1,8 @@
 package com.realestate.gateway.filter;
 
 import com.realestate.gateway.util.JwtUtil;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
@@ -13,8 +14,9 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 @Component
-@Slf4j
 public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAuthenticationFilter.Config> {
+    
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
     
     @Autowired
     private JwtUtil jwtUtil;
@@ -59,24 +61,59 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
             
             try {
                 if (!jwtUtil.isTokenValid(token)) {
+                    log.error("JWT validation failed: Token is invalid or expired");
                     return onError(exchange, "Invalid or expired token", HttpStatus.UNAUTHORIZED);
                 }
                 
                 String username = jwtUtil.extractUsername(token);
-                log.info("Request authenticated for user: {}", username);
+                String role = jwtUtil.extractRole(token);
+                String email = jwtUtil.extractEmail(token);
+                log.info("Request authenticated for user: {} with role: {} and email: {} - Path: {}", username, role, email, path);
                 
-                // Add username to request header
+                // Normalize role: ensure it has ROLE_ prefix for Spring Security compatibility
+                String normalizedRole = normalizeRole(role);
+                log.info("Role normalized: {} -> {} (for path: {})", role, normalizedRole, path);
+                
+                // Add username, role (with ROLE_ prefix), and email to request headers
                 ServerHttpRequest modifiedRequest = exchange.getRequest().mutate()
                         .header("X-User-Name", username)
+                        .header("X-User-Role", normalizedRole)
+                        .header("X-User-Email", email != null ? email : "")
                         .build();
+                
+                log.debug("Headers added - X-User-Name: {}, X-User-Role: {}, X-User-Email: {}", 
+                        username, normalizedRole, email != null ? email : "");
                 
                 return chain.filter(exchange.mutate().request(modifiedRequest).build());
                 
             } catch (Exception e) {
-                log.error("JWT validation error: {}", e.getMessage());
-                return onError(exchange, "JWT validation failed", HttpStatus.UNAUTHORIZED);
+                log.error("JWT validation error for path {}: {} - Exception type: {}", path, e.getMessage(), e.getClass().getName());
+                if (e.getCause() != null) {
+                    log.error("JWT validation error cause: {}", e.getCause().getMessage());
+                }
+                e.printStackTrace();
+                return onError(exchange, "JWT validation failed: " + e.getMessage(), HttpStatus.UNAUTHORIZED);
             }
         };
+    }
+    
+    /**
+     * Normalize role to include ROLE_ prefix for Spring Security compatibility.
+     * Spring Security's hasRole() method expects roles with ROLE_ prefix.
+     * 
+     * @param role The role from JWT token (e.g., "ADMIN", "AGENT", "CLIENT")
+     * @return Normalized role with ROLE_ prefix (e.g., "ROLE_ADMIN")
+     */
+    private String normalizeRole(String role) {
+        if (role == null || role.isEmpty()) {
+            return "ROLE_AGENT"; // Default role
+        }
+        
+        // Remove any existing ROLE_ prefix to avoid duplication
+        String cleanRole = role.startsWith("ROLE_") ? role.substring(6) : role;
+        
+        // Add ROLE_ prefix for Spring Security compatibility
+        return "ROLE_" + cleanRole.toUpperCase();
     }
     
     private Mono<Void> onError(ServerWebExchange exchange, String error, HttpStatus httpStatus) {

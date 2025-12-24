@@ -20,16 +20,38 @@ public class JwtUtil {
     private Long expiration;
     
     private SecretKey getSigningKey() {
+        System.out.println("JWT Secret length: " + (secret != null ? secret.length() : 0));
+        System.out.println("JWT Secret (first 50 chars): " + (secret != null ? secret.substring(0, Math.min(50, secret.length())) : "NULL"));
         return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
     
-    public String generateToken(String username) {
+    public String generateToken(String username, String role, String email) {
         return Jwts.builder()
                 .subject(username)
+                .claim("role", role)
+                .claim("email", email)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSigningKey())
                 .compact();
+    }
+    
+    public String generateToken(String username, String role) {
+        return generateToken(username, role, ""); // Default for backward compatibility
+    }
+    
+    public String generateToken(String username) {
+        return generateToken(username, "AGENT"); // Default for backward compatibility
+    }
+    
+    public String extractRole(String token) {
+        Claims claims = extractClaims(token);
+        return claims.get("role", String.class);
+    }
+    
+    public String extractEmail(String token) {
+        Claims claims = extractClaims(token);
+        return claims.get("email", String.class);
     }
     
     public Claims extractClaims(String token) {
@@ -47,8 +69,12 @@ public class JwtUtil {
     public boolean isTokenValid(String token) {
         try {
             Claims claims = extractClaims(token);
-            return claims.getExpiration().after(new Date());
+            boolean isValid = claims.getExpiration().after(new Date());
+            System.out.println("JWT Validation - Token valid: " + isValid + ", Expiration: " + claims.getExpiration());
+            return isValid;
         } catch (Exception e) {
+            System.err.println("JWT Validation Error: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }

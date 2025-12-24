@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -21,11 +21,14 @@ import {
 import PeopleIcon from '@mui/icons-material/People';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import { rentalAPI, bookingAPI } from '../services/rentalAPI';
+import { useAuth } from '../hooks/useAuth';
+import RoleGuard from '../components/RoleGuard';
 
 function RentalDetails() {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const { isClient } = useAuth();
   
   const [rental, setRental] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -44,11 +47,7 @@ function RentalDetails() {
     specialRequests: ''
   });
 
-  useEffect(() => {
-    loadRentalDetails();
-  }, [id]);
-
-  const loadRentalDetails = async () => {
+  const loadRentalDetails = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -60,12 +59,18 @@ function RentalDetails() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    loadRentalDetails();
+  }, [loadRentalDetails]);
 
   const calculateNights = () => {
     if (!bookingForm.startDate || !bookingForm.endDate) return 0;
     const start = new Date(bookingForm.startDate);
     const end = new Date(bookingForm.endDate);
+    // Vérifier que la date de fin est après la date de début
+    if (end <= start) return 0;
     const diffTime = Math.abs(end - start);
     return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   };
@@ -78,7 +83,44 @@ function RentalDetails() {
     return nightsTotal + cleaningFee;
   };
 
+  // Fonction de validation complète du formulaire
+  const isFormValid = () => {
+    // Vérifier que tous les champs requis sont remplis
+    if (!bookingForm.startDate || !bookingForm.endDate || !bookingForm.guestName || !bookingForm.guestEmail) {
+      return false;
+    }
+    
+    // Vérifier que la date de check-out est après la date de check-in
+    if (bookingForm.startDate && bookingForm.endDate) {
+      const start = new Date(bookingForm.startDate);
+      const end = new Date(bookingForm.endDate);
+      if (end <= start) {
+        return false;
+      }
+    }
+    
+    // Vérifier que l'email est valide
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(bookingForm.guestEmail)) {
+      return false;
+    }
+    
+    // Vérifier que le nombre de guests est valide
+    if (!rental || bookingForm.numberOfGuests < 1 || bookingForm.numberOfGuests > rental.maxGuests) {
+      return false;
+    }
+    
+    return true;
+  };
+
   const handleBookingSubmit = async () => {
+    // Valider le formulaire avant de soumettre
+    if (!isFormValid()) {
+      setError('Please fill in all required fields correctly before submitting.');
+      setOpenConfirm(false);
+      return;
+    }
+
     setSubmitting(true);
     setError('');
     setSuccess('');
@@ -215,13 +257,14 @@ function RentalDetails() {
           </Paper>
         </Grid>
 
-        {/* Colonne Droite: Formulaire de réservation */}
+        {/* Colonne Droite: Formulaire de réservation - CLIENT uniquement */}
         <Grid item xs={12} md={5}>
-          <Card sx={{ position: 'sticky', top: 20 }}>
-            <CardContent>
-              <Typography variant="h5" gutterBottom fontWeight="bold">
-                Book this rental
-              </Typography>
+          <RoleGuard requiredRole="CLIENT">
+            <Card sx={{ position: 'sticky', top: 20 }}>
+              <CardContent>
+                <Typography variant="h5" gutterBottom fontWeight="bold">
+                  Book this rental
+                </Typography>
 
               <Box component="form" mt={2}>
                 <Grid container spacing={2}>
@@ -305,6 +348,68 @@ function RentalDetails() {
                   </Grid>
                 </Grid>
 
+                {/* Messages de validation */}
+                {!bookingForm.startDate && (
+                  <Alert severity="warning" sx={{ mt: 2 }}>
+                    Check-in date is required.
+                  </Alert>
+                )}
+
+                {!bookingForm.endDate && (
+                  <Alert severity="warning" sx={{ mt: 2 }}>
+                    Check-out date is required.
+                  </Alert>
+                )}
+
+                {bookingForm.startDate && bookingForm.endDate && (() => {
+                  const start = new Date(bookingForm.startDate);
+                  const end = new Date(bookingForm.endDate);
+                  if (end <= start) {
+                    return (
+                      <Alert severity="error" sx={{ mt: 2 }}>
+                        Check-out date must be after check-in date.
+                      </Alert>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {!bookingForm.guestName && (
+                  <Alert severity="warning" sx={{ mt: 2 }}>
+                    Guest name is required.
+                  </Alert>
+                )}
+
+                {!bookingForm.guestEmail && (
+                  <Alert severity="warning" sx={{ mt: 2 }}>
+                    Email is required.
+                  </Alert>
+                )}
+
+                {bookingForm.guestEmail && (() => {
+                  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                  if (!emailRegex.test(bookingForm.guestEmail)) {
+                    return (
+                      <Alert severity="error" sx={{ mt: 2 }}>
+                        Please enter a valid email address.
+                      </Alert>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {bookingForm.numberOfGuests && rental && bookingForm.numberOfGuests < 1 && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    Number of guests must be at least 1.
+                  </Alert>
+                )}
+
+                {bookingForm.numberOfGuests && rental && bookingForm.numberOfGuests > rental.maxGuests && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    Number of guests cannot exceed {rental.maxGuests}.
+                  </Alert>
+                )}
+
                 {nights > 0 && (
                   <Box mt={3}>
                     <Divider sx={{ my: 2 }} />
@@ -343,7 +448,7 @@ function RentalDetails() {
                   size="large"
                   sx={{ mt: 3 }}
                   onClick={() => setOpenConfirm(true)}
-                  disabled={!bookingForm.startDate || !bookingForm.endDate || !bookingForm.guestName || !bookingForm.guestEmail || submitting}
+                  disabled={submitting}
                 >
                   {submitting ? <CircularProgress size={24} /> : 'Reserve Now'}
                 </Button>
@@ -354,6 +459,20 @@ function RentalDetails() {
               </Box>
             </CardContent>
           </Card>
+          </RoleGuard>
+          
+          {/* Message pour les non-CLIENT */}
+          <RoleGuard requiredRole="CLIENT" fallback={
+            <Card sx={{ position: 'sticky', top: 20 }}>
+              <CardContent>
+                <Alert severity="info">
+                  Only clients can make bookings. Please contact an agent for assistance.
+                </Alert>
+              </CardContent>
+            </Card>
+          }>
+            {null}
+          </RoleGuard>
         </Grid>
       </Grid>
 

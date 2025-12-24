@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -36,11 +36,7 @@ function SalePropertyDetails() {
     message: ''
   });
 
-  useEffect(() => {
-    loadPropertyDetails();
-  }, [id]);
-
-  const loadPropertyDetails = async () => {
+  const loadPropertyDetails = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -52,7 +48,11 @@ function SalePropertyDetails() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    loadPropertyDetails();
+  }, [loadPropertyDetails]);
 
   const handleInquirySubmit = () => {
     // Pour l'instant, juste afficher un message

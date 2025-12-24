@@ -16,7 +16,8 @@ import AdminBookings from './pages/AdminBookings';
 import PropertiesForSale from './pages/PropertiesForSale';
 import SalePropertyDetails from './pages/SalePropertyDetails';
 import AdminSales from './pages/AdminSales';
-import { isAuthenticated } from './utils/auth';
+import { useAuth } from './hooks/useAuth';
+import RoleBasedRoute from './components/RoleBasedRoute';
 
 const theme = createTheme({
   palette: {
@@ -30,14 +31,25 @@ const theme = createTheme({
 });
 
 function PrivateRoute({ children }) {
-  return isAuthenticated() ? children : <Navigate to="/login" />;
+  const { isAuthenticated, isLoading } = useAuth();
+  
+  if (isLoading) {
+    return null; // Ou un loader
+  }
+  
+  return isAuthenticated ? children : <Navigate to="/login" replace />;
 }
 
 function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
+      <Router
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true
+        }}
+      >
         <Navbar />
         <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
           <Routes>
@@ -62,17 +74,17 @@ function App() {
             <Route
               path="/dashboard"
               element={
-                <PrivateRoute>
+                <RoleBasedRoute requireAgentOrAdmin>
                   <Dashboard />
-                </PrivateRoute>
+                </RoleBasedRoute>
               }
             />
             <Route
               path="/admin"
               element={
-                <PrivateRoute>
+                <RoleBasedRoute requireAdmin>
                   <Admin />
-                </PrivateRoute>
+                </RoleBasedRoute>
               }
             />
             <Route
@@ -94,25 +106,25 @@ function App() {
             <Route
               path="/my-bookings"
               element={
-                <PrivateRoute>
+                <RoleBasedRoute requiredRole="CLIENT">
                   <MyBookings />
-                </PrivateRoute>
+                </RoleBasedRoute>
               }
             />
             <Route
               path="/admin/rentals"
               element={
-                <PrivateRoute>
+                <RoleBasedRoute requireAgentOrAdmin>
                   <AdminRentals />
-                </PrivateRoute>
+                </RoleBasedRoute>
               }
             />
             <Route
               path="/admin/bookings"
               element={
-                <PrivateRoute>
+                <RoleBasedRoute requireAgentOrAdmin>
                   <AdminBookings />
-                </PrivateRoute>
+                </RoleBasedRoute>
               }
             />
             <Route
@@ -134,9 +146,9 @@ function App() {
             <Route
               path="/admin/sales"
               element={
-                <PrivateRoute>
+                <RoleBasedRoute requireAgentOrAdmin>
                   <AdminSales />
-                </PrivateRoute>
+                </RoleBasedRoute>
               }
             />
           </Routes>

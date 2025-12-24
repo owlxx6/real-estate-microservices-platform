@@ -3,8 +3,10 @@ package com.realestate.rental.controller;
 import com.realestate.rental.dto.BookingDTO;
 import com.realestate.rental.dto.BookingRequestDTO;
 import com.realestate.rental.service.BookingService;
+import com.realestate.rental.util.RoleChecker;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -24,18 +26,40 @@ import java.util.Map;
 public class BookingController {
     
     private final BookingService bookingService;
+    private final RoleChecker roleChecker;
     
     @GetMapping
-    @Operation(summary = "Get all bookings")
-    public ResponseEntity<List<BookingDTO>> getAllBookings() {
-        List<BookingDTO> bookings = bookingService.getAllBookings();
-        return ResponseEntity.ok(bookings);
+    @Operation(summary = "Get all bookings - CLIENT sees only own, AGENT/ADMIN see all")
+    public ResponseEntity<List<BookingDTO>> getAllBookings(HttpServletRequest request) {
+        String role = roleChecker.getRoleFromRequest(request);
+        if (role.equals("CLIENT")) {
+            String userEmail = roleChecker.getEmailFromRequest(request);
+            List<BookingDTO> bookings = bookingService.getBookingsByGuestEmail(userEmail);
+            return ResponseEntity.ok(bookings);
+        } else {
+            // AGENT and ADMIN can see all
+            roleChecker.checkAnyRole(request, RoleChecker.Role.AGENT, RoleChecker.Role.ADMIN);
+            List<BookingDTO> bookings = bookingService.getAllBookings();
+            return ResponseEntity.ok(bookings);
+        }
     }
     
     @GetMapping("/{id}")
-    @Operation(summary = "Get booking by ID")
-    public ResponseEntity<BookingDTO> getBookingById(@PathVariable Long id) {
+    @Operation(summary = "Get booking by ID - CLIENT sees only own")
+    public ResponseEntity<BookingDTO> getBookingById(
+            @PathVariable Long id,
+            HttpServletRequest request) {
         BookingDTO booking = bookingService.getBookingById(id);
+        
+        // CLIENT can only see their own bookings
+        String role = roleChecker.getRoleFromRequest(request);
+        if (role.equals("CLIENT")) {
+            String userEmail = roleChecker.getEmailFromRequest(request);
+            if (!booking.getGuestEmail().equals(userEmail)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+        }
+        
         return ResponseEntity.ok(booking);
     }
     
@@ -47,29 +71,54 @@ public class BookingController {
     }
     
     @PutMapping("/{id}/confirm")
-    @Operation(summary = "Confirm a pending booking")
-    public ResponseEntity<BookingDTO> confirmBooking(@PathVariable Long id) {
+    @Operation(summary = "Confirm a pending booking - AGENT/ADMIN only")
+    public ResponseEntity<BookingDTO> confirmBooking(
+            @PathVariable Long id,
+            HttpServletRequest request) {
+        roleChecker.checkAnyRole(request, RoleChecker.Role.AGENT, RoleChecker.Role.ADMIN);
         BookingDTO confirmed = bookingService.confirmBooking(id);
         return ResponseEntity.ok(confirmed);
     }
     
     @PutMapping("/{id}/cancel")
-    @Operation(summary = "Cancel a booking")
-    public ResponseEntity<BookingDTO> cancelBooking(@PathVariable Long id) {
+    @Operation(summary = "Cancel a booking - CLIENT can cancel own, AGENT/ADMIN can cancel any")
+    public ResponseEntity<BookingDTO> cancelBooking(
+            @PathVariable Long id,
+            HttpServletRequest request) {
+        String role = roleChecker.getRoleFromRequest(request);
+        
+        // CLIENT can only cancel their own bookings
+        if (role.equals("CLIENT")) {
+            BookingDTO booking = bookingService.getBookingById(id);
+            String userEmail = roleChecker.getEmailFromRequest(request);
+            if (!booking.getGuestEmail().equals(userEmail)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+            }
+        } else {
+            // AGENT and ADMIN can cancel any
+            roleChecker.checkAnyRole(request, RoleChecker.Role.AGENT, RoleChecker.Role.ADMIN);
+        }
+        
         BookingDTO cancelled = bookingService.cancelBooking(id);
         return ResponseEntity.ok(cancelled);
     }
     
     @PutMapping("/{id}/complete")
-    @Operation(summary = "Mark booking as completed")
-    public ResponseEntity<BookingDTO> completeBooking(@PathVariable Long id) {
+    @Operation(summary = "Mark booking as completed - AGENT/ADMIN only")
+    public ResponseEntity<BookingDTO> completeBooking(
+            @PathVariable Long id,
+            HttpServletRequest request) {
+        roleChecker.checkAnyRole(request, RoleChecker.Role.AGENT, RoleChecker.Role.ADMIN);
         BookingDTO completed = bookingService.completeBooking(id);
         return ResponseEntity.ok(completed);
     }
     
     @GetMapping("/rental/{rentalId}")
-    @Operation(summary = "Get bookings for a rental property")
-    public ResponseEntity<List<BookingDTO>> getBookingsByRentalProperty(@PathVariable Long rentalId) {
+    @Operation(summary = "Get bookings for a rental property - AGENT/ADMIN only")
+    public ResponseEntity<List<BookingDTO>> getBookingsByRentalProperty(
+            @PathVariable Long rentalId,
+            HttpServletRequest request) {
+        roleChecker.checkAnyRole(request, RoleChecker.Role.AGENT, RoleChecker.Role.ADMIN);
         List<BookingDTO> bookings = bookingService.getBookingsByRentalProperty(rentalId);
         return ResponseEntity.ok(bookings);
     }

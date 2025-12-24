@@ -38,11 +38,13 @@ public class DashboardService {
             Map<String, Long> propertiesByCity = new HashMap<>();
             
             if (propertyStats.get("propertiesByType") instanceof Map) {
+                @SuppressWarnings("unchecked")
                 Map<String, ?> typeMap = (Map<String, ?>) propertyStats.get("propertiesByType");
                 typeMap.forEach((k, v) -> propertiesByType.put(k, ((Number) v).longValue()));
             }
             
             if (propertyStats.get("propertiesByCity") instanceof Map) {
+                @SuppressWarnings("unchecked")
                 Map<String, ?> cityMap = (Map<String, ?>) propertyStats.get("propertiesByCity");
                 cityMap.forEach((k, v) -> propertiesByCity.put(k, ((Number) v).longValue()));
             }

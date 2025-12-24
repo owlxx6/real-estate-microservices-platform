@@ -12,6 +12,11 @@ public class GatewayConfig {
     @Bean
     public RouteLocator customRouteLocator(RouteLocatorBuilder builder, JwtAuthenticationFilter jwtFilter) {
         return builder.routes()
+                // Authentication routes (no JWT filter needed for login)
+                .route("auth-service", r -> r
+                        .path("/api/auth/**")
+                        .uri("lb://interface-service"))
+                
                 // Property Service routes
                 .route("property-service", r -> r
                         .path("/api/properties/**")
@@ -37,6 +42,11 @@ public class GatewayConfig {
                 
                 .route("client-service-visits", r -> r
                         .path("/api/visits/**")
+                        .filters(f -> f.filter(jwtFilter.apply(new JwtAuthenticationFilter.Config())))
+                        .uri("lb://client-service"))
+                
+                .route("client-service-users", r -> r
+                        .path("/api/users/**")
                         .filters(f -> f.filter(jwtFilter.apply(new JwtAuthenticationFilter.Config())))
                         .uri("lb://client-service"))
                 

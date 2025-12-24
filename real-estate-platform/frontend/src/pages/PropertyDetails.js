@@ -20,10 +20,13 @@ import BedIcon from '@mui/icons-material/Bed';
 import BathtubIcon from '@mui/icons-material/Bathtub';
 import CalendarTodayIcon from '@mui/icons-material/CalendarToday';
 import { propertyAPI } from '../services/api';
+import { useAuth } from '../hooks/useAuth';
+import RoleGuard from '../components/RoleGuard';
 
 function PropertyDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { isClient } = useAuth();
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -235,25 +238,27 @@ function PropertyDetails() {
             </Box>
           </Paper>
 
-          {/* Actions */}
-          <Paper sx={{ p: 3 }}>
-            <Button 
-              fullWidth 
-              variant="contained" 
-              size="large"
-              sx={{ mb: 2 }}
-              disabled={property.status !== 'AVAILABLE'}
-            >
-              {property.status === 'AVAILABLE' ? 'Schedule Visit' : 'Not Available'}
-            </Button>
-            <Button 
-              fullWidth 
-              variant="outlined" 
-              size="large"
-            >
-              Contact Agent
-            </Button>
-          </Paper>
+          {/* Actions - CLIENT uniquement */}
+          <RoleGuard requiredRole="CLIENT">
+            <Paper sx={{ p: 3 }}>
+              <Button 
+                fullWidth 
+                variant="contained" 
+                size="large"
+                sx={{ mb: 2 }}
+                disabled={property.status !== 'AVAILABLE'}
+              >
+                {property.status === 'AVAILABLE' ? 'Schedule Visit' : 'Not Available'}
+              </Button>
+              <Button 
+                fullWidth 
+                variant="outlined" 
+                size="large"
+              >
+                Contact Agent
+              </Button>
+            </Paper>
+          </RoleGuard>
         </Grid>
       </Grid>
     </Box>
